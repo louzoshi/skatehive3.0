@@ -321,7 +321,7 @@ SkaterRow.displayName = "SkaterRow";
 
 export default function LeaderboardClient({ skatersData }: Props) {
   const t = useTranslations();
-  const [sortBy, setSortBy] = useState<SortOption>("posts");
+  const [sortBy, setSortBy] = useState<SortOption>("points");
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const {
     isOpen: isAirdropOpen,
