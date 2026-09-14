@@ -34,6 +34,7 @@ import {
   SORT_OPTIONS,
   SORT_GROUPS,
   getSortConfig,
+  isRealSkater,
   type SortOption,
 } from "./sortOptions";
 
@@ -241,10 +242,7 @@ export default function LeaderboardClient({ skatersData }: Props) {
   // donator_* rows are Giveth donor imports, not skaters. The score already
   // denies them the ETH bonus; keep them out of the ranking and the count too.
   const realSkaters = useMemo(
-    () =>
-      skatersData.filter(
-        (skater) => !skater.hive_author.startsWith("donator_")
-      ),
+    () => skatersData.filter(isRealSkater),
     [skatersData]
   );
 
