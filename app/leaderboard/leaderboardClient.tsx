@@ -6,7 +6,6 @@ import {
   Text,
   Avatar,
   Badge,
-  useToast,
   Image,
   Link,
   Table,
@@ -43,6 +42,183 @@ interface Props {
 }
 
 
+/** The translate function returned by useTranslations. */
+type Translate = (key: string) => string;
+
+interface LeaderboardColumn {
+  key: string;
+  label: React.ReactNode;
+  value: (skater: SkaterData) => React.ReactNode;
+}
+
+const getRankIcon = (
+  rank: number,
+  sortBy: SortOption,
+  skater: SkaterData
+) => {
+  // For binary filters, show checkmark/X instead of rankings
+  if (sortBy === "witness") {
+    return skater.has_voted_in_witness ? (
+      <Text fontSize="lg" color="green.400">
+        ✅
+      </Text>
+    ) : (
+      <Text fontSize="lg" color="red.400">
+        ❌
+      </Text>
+    );
+  }
+
+  if (sortBy === "eth") {
+    const hasEthAddress =
+      skater.eth_address &&
+      skater.eth_address !== ETH_ADDRESSES.ZERO;
+    return hasEthAddress ? (
+      <Text fontSize="lg" color="green.400">
+        ✅
+      </Text>
+    ) : (
+      <Text fontSize="lg" color="red.400">
+        ❌
+      </Text>
+    );
+  }
+
+  // For all other categories, show normal trophy rankings
+  if (rank === 1) return <Text fontSize="xl">🏆</Text>;
+  if (rank === 2) return <Text fontSize="xl">🥈</Text>;
+  if (rank === 3) return <Text fontSize="xl">🥉</Text>;
+  return (
+    <Badge colorScheme="primary" fontSize="sm" fontWeight="bold" px={2}>
+      {rank}
+    </Badge>
+  );
+};
+
+
+const formatNumber = (num: number) => {
+  if (num == null || isNaN(num)) return "-";
+  if (num >= 1000) return (num / 1000).toFixed(1) + "K";
+  return num.toFixed(2);
+};
+
+
+const getTimeSince = (dateString: string, t: Translate) => {
+  const now = new Date();
+  const date = new Date(dateString);
+  const diffInDays = Math.floor(
+    (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  if (diffInDays < 1) return t('leaderboard.today');
+  if (diffInDays === 1) return "1d";
+  if (diffInDays < 30) return `${diffInDays}d`;
+  if (diffInDays < 365) return `${Math.floor(diffInDays / 30)}mo`;
+  return `${Math.floor(diffInDays / 365)}y`;
+};
+
+
+// Memoized component for ETH address to prevent unnecessary re-renders
+const EthAddress = React.memo(({ address }: { address: string }) => {
+  return (
+    <HStack spacing={1}>
+      <Image src="/images/ethvector.svg" alt="ETH" h="10px" w="10px" />
+      <Name
+        address={address as `0x${string}`}
+        style={{
+          fontSize: "10px",
+          color: "#00ff88", // Bright green for better contrast
+          fontWeight: "500",
+        }}
+      />
+    </HStack>
+  );
+});
+EthAddress.displayName = "EthAddress";
+
+
+// Memoized skater row component
+interface SkaterRowProps {
+  skater: SkaterData;
+  rank: number;
+  columns: LeaderboardColumn[];
+  isMobile: boolean;
+  sortBy: SortOption;
+  t: Translate;
+}
+
+const SkaterRow = React.memo(
+  ({ skater, rank, columns, isMobile, sortBy, t }: SkaterRowProps) => {
+    return (
+      <Tr _hover={{ bg: "muted" }} transition="background 0.2s">
+        <Td
+          borderColor="border"
+          position="sticky"
+          left={0}
+          bg="background"
+          zIndex={1}
+          minW={isMobile ? "120px" : "200px"}
+          _groupHover={{ bg: "muted" }}
+        >
+          <HStack spacing={2}>
+            <Box minW="30px">{getRankIcon(rank, sortBy, skater)}</Box>
+            <Avatar
+              src={`https://images.hive.blog/u/${skater.hive_author}/avatar/small`}
+              name={skater.hive_author}
+              size={isMobile ? "xs" : "sm"}
+            />
+            <VStack spacing={0} align="start" minW={0}>
+              <Text
+                as={Link}
+                href={`https://www.skatehive.app/user/${skater.hive_author}`}
+                color="primary"
+                fontWeight="bold"
+                fontSize={isMobile ? "xs" : "sm"}
+                isTruncated
+                maxW={isMobile ? "100px" : "190px"}
+                target="_blank"
+                rel="noopener noreferrer"
+                _hover={{ color: "accent" }}
+              >
+                {skater.hive_author}
+              </Text>
+              {!isMobile &&
+                skater.eth_address &&
+                skater.eth_address !==
+                ETH_ADDRESSES.ZERO && (
+                  <EthAddress address={skater.eth_address} />
+                )}
+              {!isMobile && (
+                <Text color="#888888" fontSize="2xs" fontWeight="medium">
+                  {t('leaderboard.last')} {getTimeSince(skater.last_post, t)}
+                </Text>
+              )}
+            </VStack>
+          </HStack>
+        </Td>
+        {columns.map((col) => {
+          const isSorted = col.key === sortBy;
+          return (
+            <Td
+              key={col.key}
+              borderColor="border"
+              textAlign="center"
+              fontSize={isMobile ? "xs" : "sm"}
+              color={isSorted ? "#00ff88" : "text"}
+              fontWeight={isSorted ? "bold" : "medium"}
+              bg={isSorted ? "rgba(0, 255, 136, 0.1)" : "transparent"}
+            >
+              {col.value(skater)}
+            </Td>
+          );
+        })}
+      </Tr>
+    );
+  }
+);
+SkaterRow.displayName = "SkaterRow";
+
+
 export default function LeaderboardClient({ skatersData }: Props) {
   const t = useTranslations();
   const [sortBy, setSortBy] = useState<SortOption>("posts");
@@ -52,110 +228,7 @@ export default function LeaderboardClient({ skatersData }: Props) {
     onOpen: onAirdropOpen,
     onClose: onAirdropClose,
   } = useDisclosure();
-  const toast = useToast();
   const isMobile = useIsMobile();
-
-  // Add debugging for render count
-  const renderCount = React.useRef(0);
-  renderCount.current += 1;
-
-  // Memoized component for ETH address to prevent unnecessary re-renders
-  const EthAddress = React.memo(({ address }: { address: string }) => {
-    return (
-      <HStack spacing={1}>
-        <Image src="/images/ethvector.svg" alt="ETH" h="10px" w="10px" />
-        <Name
-          address={address as `0x${string}`}
-          style={{
-            fontSize: "10px",
-            color: "#00ff88", // Bright green for better contrast
-            fontWeight: "500",
-          }}
-        />
-      </HStack>
-    );
-  });
-  EthAddress.displayName = "EthAddress";
-
-  // Memoized skater row component
-  const SkaterRow = React.memo(
-    ({
-      skater,
-      rank,
-      columns,
-    }: {
-      skater: SkaterData;
-      rank: number;
-      columns: typeof mobileColumns | typeof desktopColumns;
-    }) => {
-      return (
-        <Tr _hover={{ bg: "muted" }} transition="background 0.2s">
-          <Td
-            borderColor="border"
-            position="sticky"
-            left={0}
-            bg="background"
-            zIndex={1}
-            minW={isMobile ? "120px" : "200px"}
-            _groupHover={{ bg: "muted" }}
-          >
-            <HStack spacing={2}>
-              <Box minW="30px">{getRankIcon(rank, sortBy, skater)}</Box>
-              <Avatar
-                src={`https://images.hive.blog/u/${skater.hive_author}/avatar/small`}
-                name={skater.hive_author}
-                size={isMobile ? "xs" : "sm"}
-              />
-              <VStack spacing={0} align="start" minW={0}>
-                <Text
-                  as={Link}
-                  href={`https://www.skatehive.app/user/${skater.hive_author}`}
-                  color="primary"
-                  fontWeight="bold"
-                  fontSize={isMobile ? "xs" : "sm"}
-                  isTruncated
-                  maxW={isMobile ? "100px" : "190px"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  _hover={{ color: "accent" }}
-                >
-                  {skater.hive_author}
-                </Text>
-                {!isMobile &&
-                  skater.eth_address &&
-                  skater.eth_address !==
-                  ETH_ADDRESSES.ZERO && (
-                    <EthAddress address={skater.eth_address} />
-                  )}
-                {!isMobile && (
-                  <Text color="#888888" fontSize="2xs" fontWeight="medium">
-                    {t('leaderboard.last')} {getTimeSince(skater.last_post)}
-                  </Text>
-                )}
-              </VStack>
-            </HStack>
-          </Td>
-          {columns.map((col) => {
-            const isSorted = col.key === sortBy;
-            return (
-              <Td
-                key={col.key}
-                borderColor="border"
-                textAlign="center"
-                fontSize={isMobile ? "xs" : "sm"}
-                color={isSorted ? "#00ff88" : "text"}
-                fontWeight={isSorted ? "bold" : "medium"}
-                bg={isSorted ? "rgba(0, 255, 136, 0.1)" : "transparent"}
-              >
-                {col.value(skater)}
-              </Td>
-            );
-          })}
-        </Tr>
-      );
-    }
-  );
-  SkaterRow.displayName = "SkaterRow";
 
   // Responsive values
   const headerFontSize = useBreakpointValue({
@@ -163,21 +236,7 @@ export default function LeaderboardClient({ skatersData }: Props) {
     md: "4xl",
     lg: "6xl",
   });
-  const tableHeight = useBreakpointValue({
-    base: "calc(100vh - 200px)",
-    md: "calc(100vh - 180px)",
-  });
   const containerPadding = useBreakpointValue({ base: 2, md: 4 });
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast({
-      title: t('leaderboard.addressCopied'),
-      status: "success",
-      duration: 2000,
-      isClosable: true,
-    });
-  };
 
   // donator_* rows are Giveth donor imports, not skaters. The score already
   // denies them the ETH bonus; keep them out of the ranking and the count too.
@@ -288,70 +347,6 @@ export default function LeaderboardClient({ skatersData }: Props) {
     });
     return sorted.slice(0, 50); // Top 50
   }, [realSkaters, sortBy]);
-
-  const getRankIcon = (
-    rank: number,
-    sortBy: SortOption,
-    skater: SkaterData
-  ) => {
-    // For binary filters, show checkmark/X instead of rankings
-    if (sortBy === "witness") {
-      return skater.has_voted_in_witness ? (
-        <Text fontSize="lg" color="green.400">
-          ✅
-        </Text>
-      ) : (
-        <Text fontSize="lg" color="red.400">
-          ❌
-        </Text>
-      );
-    }
-
-    if (sortBy === "eth") {
-      const hasEthAddress =
-        skater.eth_address &&
-        skater.eth_address !== ETH_ADDRESSES.ZERO;
-      return hasEthAddress ? (
-        <Text fontSize="lg" color="green.400">
-          ✅
-        </Text>
-      ) : (
-        <Text fontSize="lg" color="red.400">
-          ❌
-        </Text>
-      );
-    }
-
-    // For all other categories, show normal trophy rankings
-    if (rank === 1) return <Text fontSize="xl">🏆</Text>;
-    if (rank === 2) return <Text fontSize="xl">🥈</Text>;
-    if (rank === 3) return <Text fontSize="xl">🥉</Text>;
-    return (
-      <Badge colorScheme="primary" fontSize="sm" fontWeight="bold" px={2}>
-        {rank}
-      </Badge>
-    );
-  };
-
-  const formatNumber = (num: number) => {
-    if (num == null || isNaN(num)) return "-";
-    if (num >= 1000) return (num / 1000).toFixed(1) + "K";
-    return num.toFixed(2);
-  };
-
-  const getTimeSince = (dateString: string) => {
-    const now = new Date();
-    const date = new Date(dateString);
-    const diffInDays = Math.floor(
-      (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    if (diffInDays < 1) return t('leaderboard.today');
-    if (diffInDays === 1) return "1d";
-    if (diffInDays < 30) return `${diffInDays}d`;
-    if (diffInDays < 365) return `${Math.floor(diffInDays / 30)}mo`;
-    return `${Math.floor(diffInDays / 365)}y`;
-  };
 
   // Simplified columns for mobile
   const mobileColumns = [
@@ -666,6 +661,9 @@ export default function LeaderboardClient({ skatersData }: Props) {
                     skater={skater}
                     rank={rank}
                     columns={columns}
+                    isMobile={isMobile}
+                    sortBy={sortBy}
+                    t={t}
                   />
                 );
               })}
