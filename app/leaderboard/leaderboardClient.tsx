@@ -178,6 +178,18 @@ export default function LeaderboardClient({ skatersData }: Props) {
     });
   };
 
+  // How many skaters actually clear the penalties. donator_* rows are Giveth
+  // donor imports, not skaters, and the score already denies them the ETH bonus.
+  const scoreStats = useMemo(() => {
+    const skaters = skatersData.filter(
+      (skater) => !skater.hive_author.startsWith("donator_")
+    );
+    return {
+      scored: skaters.filter((skater) => skater.points > 0).length,
+      total: skaters.length,
+    };
+  }, [skatersData]);
+
   const activeSort = getSortConfig(sortBy);
 
   // "18 of 1860 skaters have a value here" / "1656 skaters still pending" —
@@ -420,7 +432,12 @@ export default function LeaderboardClient({ skatersData }: Props) {
       color="text"
       overflow="hidden"
     >
-      <RulesModal isOpen={isRulesOpen} onClose={() => setIsRulesOpen(false)} />
+      <RulesModal
+        isOpen={isRulesOpen}
+        onClose={() => setIsRulesOpen(false)}
+        scoredCount={scoreStats.scored}
+        totalCount={scoreStats.total}
+      />
 
       {/* Header */}
       <Box

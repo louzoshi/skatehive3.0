@@ -8,9 +8,30 @@ import { useTranslations } from "@/contexts/LocaleContext";
 interface RulesModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Skaters currently scoring above zero, and how many skaters there are. */
+  scoredCount?: number;
+  totalCount?: number;
 }
 
-export default function RulesModal({ isOpen, onClose }: RulesModalProps) {
+/** Every penalty the score applies, worst case first. */
+const PENALTIES: { labelKey: string; amount: string }[] = [
+  { labelKey: "penaltyNoHp", amount: "-5,000" },
+  { labelKey: "penaltyNoWitness", amount: "-3,500" },
+  { labelKey: "penaltyNoEth", amount: "-2,000" },
+  { labelKey: "penaltyNoPosts", amount: "-2,000" },
+  { labelKey: "penaltyNoHive", amount: "-1,000" },
+  { labelKey: "penaltyNoNft", amount: "-900" },
+  { labelKey: "penaltyNoGnars", amount: "-300" },
+  { labelKey: "penaltyNoHbd", amount: "-200" },
+  { labelKey: "penaltyInactive", amount: "-100" },
+];
+
+export default function RulesModal({
+  isOpen,
+  onClose,
+  scoredCount,
+  totalCount,
+}: RulesModalProps) {
   const t = useTranslations();
   return (
     <SkateModal
@@ -28,6 +49,67 @@ export default function RulesModal({ isOpen, onClose }: RulesModalProps) {
             <Text fontSize="sm" color="dim" mb={4}>
               {t('leaderboard.leaderboardDescription')}
             </Text>
+
+            {/* The question most skaters actually arrive with */}
+            <Box
+              bg="panel"
+              borderLeft="4px solid"
+              borderColor="primary"
+              borderRadius="md"
+              p={3}
+              mb={4}
+            >
+              <Text fontWeight="bold" mb={2} color="text">
+                {t('leaderboard.whyZeroTitle')}
+              </Text>
+              <Text fontSize="sm" color="dim" mb={2}>
+                {t('leaderboard.whyZeroBody')}
+              </Text>
+              {scoredCount != null && totalCount != null && (
+                <Text fontSize="sm" color="text" fontWeight="bold" mb={3}>
+                  {t('leaderboard.whyZeroStat')
+                    .replace('{count}', String(scoredCount))
+                    .replace('{total}', String(totalCount))}
+                </Text>
+              )}
+
+              <Text fontWeight="bold" fontSize="sm" mb={1} color="text">
+                {t('leaderboard.whyZeroPenaltyTitle')}
+              </Text>
+              <Box as="table" width="100%" fontSize="sm" mb={3}
+                style={{ borderCollapse: "collapse" }}>
+                <tbody>
+                  {PENALTIES.map(({ labelKey, amount }) => (
+                    <tr key={labelKey}>
+                      <td style={{ padding: 4 }}>
+                        {t(`leaderboard.${labelKey}`)}
+                      </td>
+                      <td
+                        align="right"
+                        style={{
+                          padding: 4,
+                          fontFamily: "monospace",
+                          fontWeight: "bold",
+                          color: "var(--chakra-colors-red-400)",
+                        }}
+                      >
+                        {amount}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Box>
+
+              <Text fontWeight="bold" fontSize="sm" mb={1} color="text">
+                {t('leaderboard.whyZeroFixTitle')}
+              </Text>
+              <ul style={{ marginLeft: 18, fontSize: "0.875rem",
+                color: "var(--chakra-colors-dim)" }}>
+                <li>{t('leaderboard.whyZeroFix1')}</li>
+                <li>{t('leaderboard.whyZeroFix2')}</li>
+                <li>{t('leaderboard.whyZeroFix3')}</li>
+              </ul>
+            </Box>
             <Text fontWeight="bold" mb={2} color="text">
               {t('leaderboard.howYouEarnPoints')}
             </Text>
