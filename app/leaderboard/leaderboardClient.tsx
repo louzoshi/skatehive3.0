@@ -443,8 +443,16 @@ export default function LeaderboardClient({ skatersData }: Props) {
           return 0;
       }
     });
-    return sorted.slice(0, 50); // Top 50
-  }, [realSkaters, sortBy]);
+    // A sparse metric should not pad the ranking with skaters who have none of
+    // it: only 18 skaters hold a Skatehive NFT, so that view is 18 rows, not 50
+    // with 32 zeros. The checklists are exempt - they rank by what is missing.
+    const eligible =
+      activeSort.coverage === "hasValue" && activeSort.countsSkater
+        ? sorted.filter(activeSort.countsSkater)
+        : sorted;
+
+    return eligible.slice(0, 50); // Top 50
+  }, [realSkaters, sortBy, activeSort]);
 
 
   const columns = isMobile ? mobileColumns : desktopColumns;

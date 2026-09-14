@@ -1039,7 +1039,7 @@ export const ptBR = {
     descMissingEth: 'É checklist, não ranking: skaters ativos que ainda não conectaram carteira ETH. Mostra ✅/❌ no lugar da posição.',
     descMissingWitness: 'É checklist, não ranking: skaters ativos que ainda não votaram no witness do Skatehive. Mostra ✅/❌ no lugar da posição.',
     descLastUpdated: 'Quando o Skatehive atualizou os dados deste skater pela última vez — não é quando ele postou.',
-    coverageHasValue: 'Só {count} de {total} skaters têm valor aqui — daí para baixo são zeros.',
+    coverageHasValue: 'Só {count} de {total} skaters têm valor aqui.',
     coveragePending: '{count} de {total} skaters ainda pendentes.',
     whyZeroTitle: '😶 Por que minha pontuação é 0?',
     whyZeroBody: 'O total de pontos tem piso 0, e as penalidades abaixo são o que a maioria dos skaters encontra. Quem não tem nada perde 15.000 pontos; mesmo quem tem Hive Power e mais nada começa em -9.900. É mais do que a maioria consegue recuperar, então a pontuação para em 0. Um 0 não quer dizer que você não fez nada — quer dizer que as penalidades ainda não foram zeradas.',

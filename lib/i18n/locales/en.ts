@@ -1022,7 +1022,7 @@ export const en = {
     descMissingEth: 'A checklist, not a ranking: active skaters who have not connected an ETH wallet yet. Shows ✅/❌ instead of a position.',
     descMissingWitness: 'A checklist, not a ranking: active skaters who have not voted for the Skatehive witness yet. Shows ✅/❌ instead of a position.',
     descLastUpdated: 'When Skatehive last refreshed this skater\'s data — not when the skater last posted.',
-    coverageHasValue: 'Only {count} of {total} skaters have a value here — rows past that are zeros.',
+    coverageHasValue: 'Only {count} of {total} skaters have a value here.',
     coveragePending: '{count} of {total} skaters still pending.',
     whyZeroTitle: '😶 Why is my score 0?',
     whyZeroBody: 'Total points have a floor of 0, and the penalties below are what most skaters run into. A skater missing everything loses 15,000 points; even one with Hive Power but nothing else starts at -9,900. That is more than most people earn back, so the score lands on 0. A 0 does not mean you did nothing — it means the penalties have not been cleared yet.',
