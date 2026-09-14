@@ -1030,7 +1030,7 @@ export const ptBR = {
     groupData: 'Dados',
     descPoints: 'Pontuação geral do Skatehive — tudo abaixo somado em um número só. A fórmula está em Regras.',
     descPower: 'Hive Power na conta, mais o valor em USD de um voto com mana cheia.',
-    descPosts: 'Quem mais postou e mandou snaps. Quem não tem posts cai para Pontos.',
+    descPosts: 'Quem mais postou e mandou snaps. Só aparecem skaters com pontuação de posts acima de zero.',
     descNfts: 'Quantos NFTs do Skatehive o skater tem.',
     descGnarsNfts: 'Quantos NFTs da Gnars o skater tem.',
     descGnarsVotes: 'Quantos votos o skater já deu na DAO da Gnars.',

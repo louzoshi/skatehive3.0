@@ -1013,7 +1013,7 @@ export const en = {
     groupData: 'Data',
     descPoints: 'Overall Skatehive score — everything below rolled into one number. See Rules for the formula.',
     descPower: 'Hive Power held, plus the USD value of one vote at full mana.',
-    descPosts: 'Who posted and snapped the most. Skaters with no posts fall back to Points.',
+    descPosts: 'Who posted and snapped the most. Only skaters with a post score above zero appear.',
     descNfts: 'How many Skatehive NFTs the skater holds.',
     descGnarsNfts: 'How many Gnars NFTs the skater holds.',
     descGnarsVotes: 'How many votes the skater has cast in the Gnars DAO.',

@@ -388,7 +388,15 @@ export default function LeaderboardClient({ skatersData }: Props) {
   }, [realSkaters, activeSort, t]);
 
   const sortedSkaters = useMemo(() => {
-    const sorted = [...realSkaters].sort((a, b) => {
+    // A sparse metric should not pad the ranking with skaters who have none of
+    // it: only 18 skaters hold a Skatehive NFT, so that view is 18 rows, not 50
+    // with 32 zeros. The checklists are exempt - they rank by what is missing.
+    const eligible =
+      activeSort.coverage === "hasValue" && activeSort.countsSkater
+        ? realSkaters.filter(activeSort.countsSkater)
+        : realSkaters;
+
+    const sorted = [...eligible].sort((a, b) => {
       switch (sortBy) {
         case "points":
           return b.points - a.points;
@@ -399,9 +407,6 @@ export default function LeaderboardClient({ skatersData }: Props) {
             (a.hp_balance + a.max_voting_power_usd)
           );
         case "posts":
-          if (a.posts_score === 0 && b.posts_score === 0) {
-            return b.points - a.points; // fallback to points
-          }
           return b.posts_score - a.posts_score;
         case "nfts":
           return b.skatehive_nft_balance - a.skatehive_nft_balance;
@@ -443,15 +448,7 @@ export default function LeaderboardClient({ skatersData }: Props) {
           return 0;
       }
     });
-    // A sparse metric should not pad the ranking with skaters who have none of
-    // it: only 18 skaters hold a Skatehive NFT, so that view is 18 rows, not 50
-    // with 32 zeros. The checklists are exempt - they rank by what is missing.
-    const eligible =
-      activeSort.coverage === "hasValue" && activeSort.countsSkater
-        ? sorted.filter(activeSort.countsSkater)
-        : sorted;
-
-    return eligible.slice(0, 50); // Top 50
+    return sorted.slice(0, 50); // Top 50
   }, [realSkaters, sortBy, activeSort]);
 
 

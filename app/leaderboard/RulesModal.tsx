@@ -3,7 +3,8 @@ import {
   Box,
 } from "@chakra-ui/react";
 import SkateModal from "@/components/shared/SkateModal";
-import { useTranslations } from "@/contexts/LocaleContext";
+import { useTranslations, useLocale } from "@/contexts/LocaleContext";
+import { useMemo } from "react";
 
 interface RulesModalProps {
   isOpen: boolean;
@@ -14,16 +15,16 @@ interface RulesModalProps {
 }
 
 /** Every penalty the score applies, worst case first. */
-const PENALTIES: { labelKey: string; amount: string }[] = [
-  { labelKey: "penaltyNoHp", amount: "-5,000" },
-  { labelKey: "penaltyNoWitness", amount: "-3,500" },
-  { labelKey: "penaltyNoEth", amount: "-2,000" },
-  { labelKey: "penaltyNoPosts", amount: "-2,000" },
-  { labelKey: "penaltyNoHive", amount: "-1,000" },
-  { labelKey: "penaltyNoNft", amount: "-900" },
-  { labelKey: "penaltyNoGnars", amount: "-300" },
-  { labelKey: "penaltyNoHbd", amount: "-200" },
-  { labelKey: "penaltyInactive", amount: "-100" },
+const PENALTIES: { labelKey: string; amount: number }[] = [
+  { labelKey: "penaltyNoHp", amount: -5000 },
+  { labelKey: "penaltyNoWitness", amount: -3500 },
+  { labelKey: "penaltyNoEth", amount: -2000 },
+  { labelKey: "penaltyNoPosts", amount: -2000 },
+  { labelKey: "penaltyNoHive", amount: -1000 },
+  { labelKey: "penaltyNoNft", amount: -900 },
+  { labelKey: "penaltyNoGnars", amount: -300 },
+  { labelKey: "penaltyNoHbd", amount: -200 },
+  { labelKey: "penaltyInactive", amount: -100 },
 ];
 
 export default function RulesModal({
@@ -33,6 +34,9 @@ export default function RulesModal({
   totalCount,
 }: RulesModalProps) {
   const t = useTranslations();
+  const { locale } = useLocale();
+  // "-5,000" reads as minus five where the comma is a decimal separator.
+  const formatAmount = useMemo(() => new Intl.NumberFormat(locale), [locale]);
   return (
     <SkateModal
       isOpen={isOpen}
@@ -90,10 +94,10 @@ export default function RulesModal({
                           padding: 4,
                           fontFamily: "monospace",
                           fontWeight: "bold",
-                          color: "var(--chakra-colors-red-400)",
+                          color: "var(--chakra-colors-error)",
                         }}
                       >
-                        {amount}
+                        {formatAmount.format(amount)}
                       </td>
                     </tr>
                   ))}
