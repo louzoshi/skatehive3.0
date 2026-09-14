@@ -41,14 +41,6 @@ export interface SortOptionConfig {
 const hasEthAddress = (skater: SkaterData) =>
   Boolean(skater.eth_address && skater.eth_address !== ETH_ADDRESSES.ZERO);
 
-/**
- * donator_* rows are Giveth donor imports rather than skaters. The scoring
- * already excludes them by name when awarding the ETH wallet bonus, so they
- * do not belong in the ranking or the skater count either.
- */
-export const isRealSkater = (skater: SkaterData): boolean =>
-  !skater.hive_author.startsWith("donator_");
-
 export const SORT_OPTIONS: SortOptionConfig[] = [
   {
     value: "points",

@@ -34,7 +34,6 @@ import {
   SORT_OPTIONS,
   SORT_GROUPS,
   getSortConfig,
-  isRealSkater,
   type SortOption,
 } from "./sortOptions";
 
@@ -339,20 +338,13 @@ export default function LeaderboardClient({ skatersData }: Props) {
   });
   const containerPadding = useBreakpointValue({ base: 2, md: 4 });
 
-  // donator_* rows are Giveth donor imports, not skaters. The score already
-  // denies them the ETH bonus; keep them out of the ranking and the count too.
-  const realSkaters = useMemo(
-    () => skatersData.filter(isRealSkater),
-    [skatersData]
-  );
-
   // How many skaters actually clear the penalties.
   const scoreStats = useMemo(
     () => ({
-      scored: realSkaters.filter((skater) => skater.points > 0).length,
-      total: realSkaters.length,
+      scored: skatersData.filter((skater) => skater.points > 0).length,
+      total: skatersData.length,
     }),
-    [realSkaters]
+    [skatersData]
   );
 
   // Five columns sit off-screen at common widths with nothing to hint at them.
@@ -377,15 +369,15 @@ export default function LeaderboardClient({ skatersData }: Props) {
   // so a sparse metric does not read as a ranking of everyone.
   const sortCoverageLabel = useMemo(() => {
     if (activeSort.coverage === "none" || !activeSort.countsSkater) return null;
-    const matching = realSkaters.filter(activeSort.countsSkater).length;
+    const matching = skatersData.filter(activeSort.countsSkater).length;
     const key =
       activeSort.coverage === "pending"
         ? "leaderboard.coveragePending"
         : "leaderboard.coverageHasValue";
     return t(key)
       .replace("{count}", String(matching))
-      .replace("{total}", String(realSkaters.length));
-  }, [realSkaters, activeSort, t]);
+      .replace("{total}", String(skatersData.length));
+  }, [skatersData, activeSort, t]);
 
   const sortedSkaters = useMemo(() => {
     // A sparse metric should not pad the ranking with skaters who have none of
@@ -393,8 +385,8 @@ export default function LeaderboardClient({ skatersData }: Props) {
     // with 32 zeros. The checklists are exempt - they rank by what is missing.
     const eligible =
       activeSort.coverage === "hasValue" && activeSort.countsSkater
-        ? realSkaters.filter(activeSort.countsSkater)
-        : realSkaters;
+        ? skatersData.filter(activeSort.countsSkater)
+        : skatersData;
 
     const sorted = [...eligible].sort((a, b) => {
       switch (sortBy) {
@@ -449,7 +441,7 @@ export default function LeaderboardClient({ skatersData }: Props) {
       }
     });
     return sorted.slice(0, 50); // Top 50
-  }, [realSkaters, sortBy, activeSort]);
+  }, [skatersData, sortBy, activeSort]);
 
 
   const columns = isMobile ? mobileColumns : desktopColumns;
@@ -495,7 +487,7 @@ export default function LeaderboardClient({ skatersData }: Props) {
             fontSize={{ base: "xs", md: "sm" }}
             textAlign="center"
           >
-            {t('leaderboard.skatersCount').replace('{count}', String(realSkaters.length))}
+            {t('leaderboard.skatersCount').replace('{count}', String(skatersData.length))}
           </Text>
 
           {/* Controls */}

@@ -9,7 +9,6 @@ import {
   SORT_GROUPS,
   getSortConfig,
   isCheckSort,
-  isRealSkater,
   type SortOption,
 } from "../sortOptions";
 import { SkaterData } from "@/types/leaderboard";
@@ -151,22 +150,6 @@ it("missing witness counts the skaters who have not voted", () => {
 
 it("last updated reports no coverage - it ranks everyone", () => {
   assert.strictEqual(getSortConfig("last_updated").coverage, "none");
-});
-
-console.log("\n📦 isRealSkater");
-
-it("keeps skaters and drops Giveth donor imports", () => {
-  assert.strictEqual(isRealSkater(skater({ hive_author: "web-gnar" })), true);
-  assert.strictEqual(isRealSkater(skater({ hive_author: "donator_0xedc1" })), false);
-  assert.strictEqual(
-    isRealSkater(skater({ hive_author: "donator_Petterson_Gomes" })),
-    false
-  );
-});
-
-it("does not drop a skater whose name merely contains donator", () => {
-  assert.strictEqual(isRealSkater(skater({ hive_author: "bigdonator" })), true);
-  assert.strictEqual(isRealSkater(skater({ hive_author: "thedonator_x" })), true);
 });
 
 (async () => {
