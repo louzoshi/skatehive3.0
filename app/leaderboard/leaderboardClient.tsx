@@ -114,7 +114,7 @@ export default function LeaderboardClient({ skatersData }: Props) {
                   fontWeight="bold"
                   fontSize={isMobile ? "xs" : "sm"}
                   isTruncated
-                  maxW="100px"
+                  maxW={isMobile ? "100px" : "190px"}
                   target="_blank"
                   rel="noopener noreferrer"
                   _hover={{ color: "accent" }}
@@ -135,21 +135,22 @@ export default function LeaderboardClient({ skatersData }: Props) {
               </VStack>
             </HStack>
           </Td>
-          {columns.map((col) => (
-            <Td
-              key={col.key}
-              borderColor="border"
-              textAlign="center"
-              fontSize={isMobile ? "xs" : "sm"}
-              color={col.key === "points" ? "#00ff88" : "text"}
-              fontWeight={col.key === "points" ? "bold" : "medium"}
-              bg={
-                col.key === "points" ? "rgba(0, 255, 136, 0.1)" : "transparent"
-              }
-            >
-              {col.value(skater)}
-            </Td>
-          ))}
+          {columns.map((col) => {
+            const isSorted = col.key === sortBy;
+            return (
+              <Td
+                key={col.key}
+                borderColor="border"
+                textAlign="center"
+                fontSize={isMobile ? "xs" : "sm"}
+                color={isSorted ? "#00ff88" : "text"}
+                fontWeight={isSorted ? "bold" : "medium"}
+                bg={isSorted ? "rgba(0, 255, 136, 0.1)" : "transparent"}
+              >
+                {col.value(skater)}
+              </Td>
+            );
+          })}
         </Tr>
       );
     }
@@ -178,17 +179,40 @@ export default function LeaderboardClient({ skatersData }: Props) {
     });
   };
 
-  // How many skaters actually clear the penalties. donator_* rows are Giveth
-  // donor imports, not skaters, and the score already denies them the ETH bonus.
-  const scoreStats = useMemo(() => {
-    const skaters = skatersData.filter(
-      (skater) => !skater.hive_author.startsWith("donator_")
-    );
-    return {
-      scored: skaters.filter((skater) => skater.points > 0).length,
-      total: skaters.length,
-    };
-  }, [skatersData]);
+  // donator_* rows are Giveth donor imports, not skaters. The score already
+  // denies them the ETH bonus; keep them out of the ranking and the count too.
+  const realSkaters = useMemo(
+    () =>
+      skatersData.filter(
+        (skater) => !skater.hive_author.startsWith("donator_")
+      ),
+    [skatersData]
+  );
+
+  // How many skaters actually clear the penalties.
+  const scoreStats = useMemo(
+    () => ({
+      scored: realSkaters.filter((skater) => skater.points > 0).length,
+      total: realSkaters.length,
+    }),
+    [realSkaters]
+  );
+
+  // Five columns sit off-screen at common widths with nothing to hint at them.
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const [hasMoreRight, setHasMoreRight] = useState(false);
+
+  const updateScrollHint = React.useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setHasMoreRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  }, []);
+
+  React.useEffect(() => {
+    updateScrollHint();
+    window.addEventListener("resize", updateScrollHint);
+    return () => window.removeEventListener("resize", updateScrollHint);
+  }, [updateScrollHint, isMobile]);
 
   const activeSort = getSortConfig(sortBy);
 
@@ -196,18 +220,18 @@ export default function LeaderboardClient({ skatersData }: Props) {
   // so a sparse metric does not read as a ranking of everyone.
   const sortCoverageLabel = useMemo(() => {
     if (activeSort.coverage === "none" || !activeSort.countsSkater) return null;
-    const matching = skatersData.filter(activeSort.countsSkater).length;
+    const matching = realSkaters.filter(activeSort.countsSkater).length;
     const key =
       activeSort.coverage === "pending"
         ? "leaderboard.coveragePending"
         : "leaderboard.coverageHasValue";
     return t(key)
       .replace("{count}", String(matching))
-      .replace("{total}", String(skatersData.length));
-  }, [skatersData, activeSort, t]);
+      .replace("{total}", String(realSkaters.length));
+  }, [realSkaters, activeSort, t]);
 
   const sortedSkaters = useMemo(() => {
-    const sorted = [...skatersData].sort((a, b) => {
+    const sorted = [...realSkaters].sort((a, b) => {
       switch (sortBy) {
         case "points":
           return b.points - a.points;
@@ -263,7 +287,7 @@ export default function LeaderboardClient({ skatersData }: Props) {
       }
     });
     return sorted.slice(0, 50); // Top 50
-  }, [skatersData, sortBy]);
+  }, [realSkaters, sortBy]);
 
   const getRankIcon = (
     rank: number,
@@ -359,7 +383,10 @@ export default function LeaderboardClient({ skatersData }: Props) {
     {
       key: "power",
       label: (
-        <Image src="/images/hp_logo.png" alt="HP" h="18px" display="inline" />
+        <HStack spacing={1} justify="center">
+          <Image src="/images/hp_logo.png" alt="" h="18px" display="inline" />
+          <Text as="span">HP</Text>
+        </HStack>
       ),
       value: (skater: SkaterData) =>
         formatNumber(skater.hp_balance + skater.max_voting_power_usd),
@@ -395,12 +422,15 @@ export default function LeaderboardClient({ skatersData }: Props) {
     {
       key: "hbd",
       label: (
-        <Image
-          src="/images/hbd_savings.png"
-          alt="HBD"
-          h="18px"
-          display="inline"
-        />
+        <HStack spacing={1} justify="center">
+          <Image
+            src="/images/hbd_savings.png"
+            alt=""
+            h="18px"
+            display="inline"
+          />
+          <Text as="span">HBD</Text>
+        </HStack>
       ),
       value: (skater: SkaterData) =>
         formatNumber(skater.hbd_balance + skater.hbd_savings_balance),
@@ -466,7 +496,7 @@ export default function LeaderboardClient({ skatersData }: Props) {
             fontSize={{ base: "xs", md: "sm" }}
             textAlign="center"
           >
-            {t('leaderboard.skatersCount').replace('{count}', String(skatersData.length))}
+            {t('leaderboard.skatersCount').replace('{count}', String(realSkaters.length))}
           </Text>
 
           {/* Controls */}
@@ -493,7 +523,10 @@ export default function LeaderboardClient({ skatersData }: Props) {
                   );
                   if (options.length === 0) return null;
                   return (
-                    <optgroup key={group} label={t(`leaderboard.${labelKey}`)}>
+                    <optgroup
+                      key={group}
+                      label={t(`leaderboard.${labelKey}`)}
+                    >
                       {options.map((option) => (
                         <option key={option.value} value={option.value}>
                           {t(`leaderboard.${option.labelKey}`)}
@@ -548,8 +581,23 @@ export default function LeaderboardClient({ skatersData }: Props) {
       </Box>
 
       {/* Table Container */}
-      <Box flex="1" w="full" overflow="hidden">
+      <Box flex="1" w="full" overflow="hidden" position="relative">
+        {/* Fade marking the columns still off to the right */}
+        {hasMoreRight && (
+          <Box
+            position="absolute"
+            top={0}
+            right={0}
+            bottom={0}
+            w="48px"
+            pointerEvents="none"
+            zIndex={4}
+            bgGradient="linear(to-r, transparent, background)"
+          />
+        )}
         <TableContainer
+          ref={scrollRef}
+          onScroll={updateScrollHint}
           h="full"
           overflowY="auto"
           overflowX="auto"
@@ -585,23 +633,28 @@ export default function LeaderboardClient({ skatersData }: Props) {
                 >
                   {t('leaderboard.skater')}
                 </Th>
-                {columns.map((col) => (
-                  <Th
-                    key={col.key}
-                    color={col.key === "points" ? "#00ff88" : "primary"}
-                    fontWeight="bold"
-                    borderColor="border"
-                    textAlign="center"
-                    minW={isMobile ? "60px" : "80px"}
-                    bg={
-                      col.key === "points"
-                        ? "rgba(0, 255, 136, 0.1)"
-                        : "transparent"
-                    }
-                  >
-                    {col.label}
-                  </Th>
-                ))}
+                {columns.map((col) => {
+                  const isSorted = col.key === sortBy;
+                  return (
+                    <Th
+                      key={col.key}
+                      color={isSorted ? "#00ff88" : "primary"}
+                      fontWeight="bold"
+                      borderColor="border"
+                      textAlign="center"
+                      minW={isMobile ? "60px" : "80px"}
+                      bg={isSorted ? "rgba(0, 255, 136, 0.1)" : "transparent"}
+                      aria-sort={isSorted ? "descending" : undefined}
+                    >
+                      {col.label}
+                      {isSorted && (
+                        <Text as="span" ml={1} aria-hidden="true">
+                          ▼
+                        </Text>
+                      )}
+                    </Th>
+                  );
+                })}
               </Tr>
             </Thead>
             <Tbody>
