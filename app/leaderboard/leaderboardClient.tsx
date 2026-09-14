@@ -31,24 +31,17 @@ import { EnsName as Name } from "@/components/shared/EnsIdentity";
 import { SkaterData } from "@/types/leaderboard";
 import { ETH_ADDRESSES } from "@/config/app.config";
 import { useTranslations } from "@/contexts/LocaleContext";
+import {
+  SORT_OPTIONS,
+  SORT_GROUPS,
+  getSortConfig,
+  type SortOption,
+} from "./sortOptions";
 
 interface Props {
   skatersData: SkaterData[];
 }
 
-type SortOption =
-  | "points"
-  | "power"
-  | "posts"
-  | "nfts"
-  | "gnars"
-  | "donations"
-  | "hive"
-  | "eth"
-  | "gnars_balance"
-  | "giveth_donations_usd"
-  | "witness"
-  | "last_updated";
 
 export default function LeaderboardClient({ skatersData }: Props) {
   const t = useTranslations();
@@ -185,6 +178,22 @@ export default function LeaderboardClient({ skatersData }: Props) {
     });
   };
 
+  const activeSort = getSortConfig(sortBy);
+
+  // "18 of 1860 skaters have a value here" / "1656 skaters still pending" —
+  // so a sparse metric does not read as a ranking of everyone.
+  const sortCoverageLabel = useMemo(() => {
+    if (activeSort.coverage === "none" || !activeSort.countsSkater) return null;
+    const matching = skatersData.filter(activeSort.countsSkater).length;
+    const key =
+      activeSort.coverage === "pending"
+        ? "leaderboard.coveragePending"
+        : "leaderboard.coverageHasValue";
+    return t(key)
+      .replace("{count}", String(matching))
+      .replace("{total}", String(skatersData.length));
+  }, [skatersData, activeSort, t]);
+
   const sortedSkaters = useMemo(() => {
     const sorted = [...skatersData].sort((a, b) => {
       switch (sortBy) {
@@ -225,8 +234,6 @@ export default function LeaderboardClient({ skatersData }: Props) {
           return aHasEth ? 1 : -1; // Users without ETH rank higher
         case "gnars_balance":
           return b.gnars_balance - a.gnars_balance;
-        case "giveth_donations_usd":
-          return b.giveth_donations_usd - a.giveth_donations_usd;
         case "witness":
           // Sort by post count first, then by witness vote presence
           // This shows active users who haven't voted for witness
@@ -456,25 +463,28 @@ export default function LeaderboardClient({ skatersData }: Props) {
                 onChange={(e) => setSortBy(e.target.value as SortOption)}
                 size="sm"
                 w="auto"
-                minW="120px"
+                minW="180px"
                 bg="background"
                 borderColor="border"
                 color="text"
                 _hover={{ borderColor: "primary" }}
                 _focus={{ borderColor: "primary", boxShadow: "outline" }}
               >
-                <option value="points">{t('leaderboard.points')}</option>
-                <option value="power">{t('leaderboard.power')}</option>
-                <option value="posts">{t('leaderboard.postScore')}</option>
-                <option value="nfts">{t('leaderboard.skatehiveNfts')}</option>
-                <option value="gnars_balance">{t('leaderboard.gnarsNfts')}</option>
-                <option value="gnars">{t('leaderboard.gnarsVoters')}</option>
-                <option value="donations">{t('leaderboard.donations')}</option>
-                <option value="hive">{t('leaderboard.hive')}</option>
-                <option value="eth">{t('leaderboard.missingEth')}</option>
-                <option value="giveth_donations_usd">{t('leaderboard.donationsDollar')}</option>
-                <option value="witness">{t('leaderboard.missingWitness')}</option>
-                <option value="last_updated">{t('leaderboard.lastUpdated')}</option>
+                {SORT_GROUPS.map(({ group, labelKey }) => {
+                  const options = SORT_OPTIONS.filter(
+                    (option) => option.group === group
+                  );
+                  if (options.length === 0) return null;
+                  return (
+                    <optgroup key={group} label={t(`leaderboard.${labelKey}`)}>
+                      {options.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {t(`leaderboard.${option.labelKey}`)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
               </Select>
             </HStack>
 
@@ -501,6 +511,22 @@ export default function LeaderboardClient({ skatersData }: Props) {
               {t('leaderboard.airdrop')}
             </Button>
           </HStack>
+
+          {/* What the selected sort actually does, and who it covers */}
+          <VStack spacing={0} maxW="640px" px={2}>
+            <Text
+              fontSize={{ base: "xs", md: "sm" }}
+              color="text"
+              textAlign="center"
+            >
+              {t(`leaderboard.${activeSort.descriptionKey}`)}
+            </Text>
+            {sortCoverageLabel && (
+              <Text fontSize="2xs" color="dim" textAlign="center" mt={1}>
+                {sortCoverageLabel}
+              </Text>
+            )}
+          </VStack>
         </VStack>
       </Box>
 
