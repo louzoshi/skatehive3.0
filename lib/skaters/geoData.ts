@@ -377,6 +377,12 @@ export const CITIES: Record<string, CityEntry> = {
 
 /** US states and territories -> centroid. Codes only when not an ISO country code. */
 export const US_STATES: Record<string, { readonly name: string; readonly coords: LatLng }> = {
+  // Absent until now, so "Wilmington, DE" fell through to the ISO table and
+  // came back Germany, and a New York skater had no state to resolve to.
+  delaware: { name: "Delaware", coords: [39.32, -75.51] }, de: { name: "Delaware", coords: [39.32, -75.51] },
+  "new york": { name: "New York", coords: [42.17, -74.95] }, ny: { name: "New York", coords: [42.17, -74.95] },
+  "district of columbia": { name: "District of Columbia", coords: [38.9, -77.03] },
+  dc: { name: "District of Columbia", coords: [38.9, -77.03] },
   alabama: { name: "Alabama", coords: [32.81, -86.79] }, alaska: { name: "Alaska", coords: [61.37, -152.4] },
   arizona: { name: "Arizona", coords: [33.73, -111.43] }, az: { name: "Arizona", coords: [33.73, -111.43] },
   arkansas: { name: "Arkansas", coords: [34.97, -92.37] }, california: { name: "California", coords: [36.12, -119.68] },
@@ -411,6 +417,48 @@ export const US_STATES: Record<string, { readonly name: string; readonly coords:
   wisconsin: { name: "Wisconsin", coords: [44.27, -89.62] }, wyoming: { name: "Wyoming", coords: [42.76, -107.3] },
   "pacific northwest": { name: "Pacific Northwest", coords: [45.52, -122.68] },
   pnw: { name: "Pacific Northwest", coords: [45.52, -122.68] },
+  // Every USPS code, including the ones that collide with an ISO country
+  // code (ca/co/il/in/tn/ma/de/...). resolveLocation checks states before
+  // bare ISO codes, so "Nashville, TN" is Tennessee and not Tunisia.
+  al: { name: "Alabama", coords: [32.81, -86.79] },
+  ak: { name: "Alaska", coords: [61.37, -152.4] },
+  ar: { name: "Arkansas", coords: [34.97, -92.37] },
+  ca: { name: "California", coords: [36.12, -119.68] },
+  co: { name: "Colorado", coords: [39.06, -105.31] },
+  ga: { name: "Georgia", coords: [33.04, -83.64] },
+  id: { name: "Idaho", coords: [44.24, -114.48] },
+  il: { name: "Illinois", coords: [40.35, -88.99] },
+  in: { name: "Indiana", coords: [39.85, -86.26] },
+  ia: { name: "Iowa", coords: [42.01, -93.21] },
+  ky: { name: "Kentucky", coords: [37.67, -84.67] },
+  la: { name: "Louisiana", coords: [31.17, -91.87] },
+  me: { name: "Maine", coords: [44.69, -69.38] },
+  md: { name: "Maryland", coords: [39.06, -76.8] },
+  ma: { name: "Massachusetts", coords: [42.23, -71.53] },
+  mi: { name: "Michigan", coords: [43.33, -84.54] },
+  mn: { name: "Minnesota", coords: [45.69, -93.9] },
+  ms: { name: "Mississippi", coords: [32.74, -89.68] },
+  mo: { name: "Missouri", coords: [38.46, -92.29] },
+  mt: { name: "Montana", coords: [46.92, -110.45] },
+  ne: { name: "Nebraska", coords: [41.13, -98.27] },
+  nv: { name: "Nevada", coords: [38.31, -117.06] },
+  nh: { name: "New Hampshire", coords: [43.45, -71.56] },
+  nm: { name: "New Mexico", coords: [34.84, -106.25] },
+  nc: { name: "North Carolina", coords: [35.63, -79.81] },
+  nd: { name: "North Dakota", coords: [47.53, -99.78] },
+  oh: { name: "Ohio", coords: [40.39, -82.76] },
+  ok: { name: "Oklahoma", coords: [35.57, -96.93] },
+  or: { name: "Oregon", coords: [44.57, -122.07] },
+  ri: { name: "Rhode Island", coords: [41.68, -71.51] },
+  sc: { name: "South Carolina", coords: [33.86, -80.95] },
+  sd: { name: "South Dakota", coords: [44.3, -99.44] },
+  tn: { name: "Tennessee", coords: [35.75, -86.69] },
+  ut: { name: "Utah", coords: [40.15, -111.86] },
+  vt: { name: "Vermont", coords: [44.05, -72.71] },
+  va: { name: "Virginia", coords: [37.77, -78.17] },
+  wv: { name: "West Virginia", coords: [38.49, -80.95] },
+  wi: { name: "Wisconsin", coords: [44.27, -89.62] },
+  wy: { name: "Wyoming", coords: [42.76, -107.3] },
 };
 
 /**

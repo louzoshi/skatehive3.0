@@ -54,6 +54,9 @@ export interface SkatersMapProps {
 
 export default function SkatersMap({ skaters, t, onSelectCountry, origin = null }: SkatersMapProps) {
   const mapRef = useRef<LeafletMap | null>(null);
+  // Readiness has to be state, not just the ref: MapContainer arrives through a
+  // dynamic import, so on the first pass the ref is still null.
+  const [mapReady, setMapReady] = useState(false);
   const [iconFactory, setIconFactory] = useState<((count: number) => DivIcon) | null>(null);
   const [spotIcon, setSpotIcon] = useState<DivIcon | null>(null);
   const [originIcon, setOriginIcon] = useState<DivIcon | null>(null);
@@ -67,11 +70,13 @@ export default function SkatersMap({ skaters, t, onSelectCountry, origin = null 
   const places = useMemo(() => groupByPlace(skaters), [skaters]);
 
   // Recentre when the viewer shares their position, so "near me" moves the map
-  // and not just the list order.
+  // and not just the list order. Depends on `mapReady` as well as `origin`:
+  // press "Near me" in list view and then switch to Map, and `origin` never
+  // changes again — without it the map would sit at the world view.
   useEffect(() => {
-    if (!origin || !mapRef.current) return;
+    if (!origin || !mapReady || !mapRef.current) return;
     mapRef.current.flyTo([origin[0], origin[1]], NEAR_ME_ZOOM, { duration: 1.2 });
-  }, [origin]);
+  }, [origin, mapReady]);
 
   // Leaflet itself can only be imported on the client, so the icons are built
   // after mount rather than at module scope.
@@ -211,6 +216,7 @@ export default function SkatersMap({ skaters, t, onSelectCountry, origin = null 
           scrollWheelZoom={false}
           ref={(m: LeafletMap | null) => {
             mapRef.current = m;
+            setMapReady(Boolean(m));
           }}
         >
           <TileLayer

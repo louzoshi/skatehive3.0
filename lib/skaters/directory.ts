@@ -16,12 +16,10 @@ export const TIER_MAX_DAYS: Record<Exclude<ActivityTier, "dormant">, number> = {
   quiet: 365,
 };
 
-/** Whole days since an ISO timestamp, or null when there is no timestamp. */
-export function daysSince(iso: string | undefined, now: number = Date.now()): number | null {
-  if (!iso) return null;
-  const parsed = Date.parse(iso);
-  if (Number.isNaN(parsed)) return null;
-  return Math.max(0, Math.floor((now - parsed) / DAY_MS));
+/** Whole days since an epoch-seconds timestamp, or null when there is none. */
+export function daysSince(seconds: number | undefined, now: number = Date.now()): number | null {
+  if (!seconds) return null;
+  return Math.max(0, Math.floor((now - seconds * 1000) / DAY_MS));
 }
 
 /**
@@ -50,11 +48,7 @@ export interface SortOption {
   compare: (a: Skater, b: Skater) => number;
 }
 
-const byLastPost = (a: Skater, b: Skater) => {
-  const aTime = a.lastPost ? Date.parse(a.lastPost) : 0;
-  const bTime = b.lastPost ? Date.parse(b.lastPost) : 0;
-  return bTime - aTime;
-};
+const byLastPost = (a: Skater, b: Skater) => (b.lastPost || 0) - (a.lastPost || 0);
 
 /** Ties break on username so the order is stable between renders. */
 const stable =

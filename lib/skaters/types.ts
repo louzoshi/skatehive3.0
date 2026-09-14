@@ -27,20 +27,20 @@ export interface Skater {
   coords?: LatLng;
   /** True for "Moon", "Metaverse" and other deliberate non-answers. */
   nowhere?: boolean;
-  /** ISO timestamp of their most recent post. */
-  lastPost?: string;
+  /**
+   * Their most recent post, as epoch SECONDS.
+   *
+   * Not an ISO string: at ~1700 skaters the shipped payload carried 34KB of
+   * "2026-09-14T12:00:00Z", and every reader parsed it to a number anyway.
+   */
+  lastPost?: number;
   points?: number;
   postCount?: number;
   snapsCount?: number;
-  postsScore?: number;
   /** Hive Power — the best proxy we have for "has skin in the game". */
   hp?: number;
-  /** They have an EVM address on file (Gnars / NFT features). */
-  hasEth?: boolean;
   gnars?: number;
   nfts?: number;
-  /** They vote for witnesses — a small "understands Hive" signal. */
-  witnessVoter?: boolean;
   /** How many spots they have added to the Skatehive spot map. */
   spotCount?: number;
 }

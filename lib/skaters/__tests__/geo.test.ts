@@ -137,6 +137,59 @@ it("every resolved country carries coordinates we can pin", () => {
   }
 });
 
+it("reads a US state code that is also an ISO country code as the state", () => {
+  // Regression: findCountry used to take any 2-letter ISO match first, so
+  // "Nashville, TN" resolved to Tunisia and "Sacramento, CA" to Canada.
+  const cases: [string, string][] = [
+    ["Sacramento, CA", "California"],
+    ["Denver, CO", "Colorado"],
+    ["Springfield, IL", "Illinois"],
+    ["Nashville, TN", "Tennessee"],
+    ["Worcester, MA", "Massachusetts"],
+    ["Boise, ID", "Idaho"],
+    ["Wilmington, DE", "Delaware"],
+    ["Little Rock, AR", "Arkansas"],
+    ["Brooklyn, NY", "New York"],
+  ];
+  for (const [input, state] of cases) {
+    const place = resolveLocation(input);
+    assert.strictEqual(place.country, "United States", input);
+    assert.strictEqual(place.city, state, input);
+  }
+});
+
+it("still reads a bare two-letter code that is not a US state as a country", () => {
+  assert.strictEqual(resolveLocation("Ioannina, GR").country, "Greece");
+  assert.strictEqual(resolveLocation("sp br").country, "Brazil");
+  assert.strictEqual(resolveLocation("south west uk").country, "United Kingdom");
+});
+
+it("does not let a city outrank a country written in the same string", () => {
+  // Lagos is in the city table as Nigeria, but this person said Portugal.
+  assert.strictEqual(resolveLocation("Lagos, Portugal").country, "Portugal");
+  assert.strictEqual(resolveLocation("Leon, Spain").country, "Spain");
+  assert.strictEqual(resolveLocation("Vancouver, WA").country, "United States");
+  assert.strictEqual(resolveLocation("Ontario, California").city, "California");
+});
+
+it("keeps the city when it agrees with the country in the string", () => {
+  const place = resolveLocation("Sao Paulo, Brazil");
+  assert.strictEqual(place.country, "Brazil");
+  assert.strictEqual(place.city, "São Paulo");
+});
+
+it("does not call a real town a joke because a hint is a substring of it", () => {
+  // "mars" in Marseille, "moon" in Moonachie, "asia" in Asiago, "earth" in
+  // Earth City — all were bucketed as "somewhere out there".
+  for (const input of ["Marseille", "Moonachie", "Asiago", "Marsala", "Marsden"]) {
+    assert.strictEqual(resolveLocation(input).nowhere, false, input);
+  }
+  // The whole-word cases must still be caught.
+  for (const input of ["Moon", "Mars", "the metaverse", "Earth"]) {
+    assert.strictEqual(resolveLocation(input).nowhere, true, input);
+  }
+});
+
 console.log("\n📦 country slugs");
 
 it("round-trips a country through its slug", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Plain JSON-RPC rather than the dhive client: this hook runs on the skaters
@@ -32,10 +32,16 @@ interface FollowRow {
  */
 export default function useFollowingSet(viewer: string | null) {
   const [following, setFollowing] = useState<Set<string> | null>(null);
+  // Follows made while the pages above are still in flight. Walking a large
+  // account takes seconds, and a follow performed in that window used to be
+  // dropped on the floor: the button stayed on "Follow" even though the
+  // broadcast went through, and the arriving snapshot pre-dated it.
+  const pending = useRef(new Map<string, boolean>());
 
   useEffect(() => {
     if (!viewer) {
       setFollowing(null);
+      pending.current.clear();
       return;
     }
 
@@ -76,7 +82,14 @@ export default function useFollowingSet(viewer: string | null) {
         console.error("[skaters] could not load the viewer's following list:", error);
       }
 
-      if (!cancelled) setFollowing(names);
+      if (cancelled) return;
+      // Anything the viewer did while this was loading outranks the snapshot.
+      for (const [username, isFollowing] of pending.current) {
+        if (isFollowing) names.add(username);
+        else names.delete(username);
+      }
+      pending.current.clear();
+      setFollowing(names);
     })();
 
     return () => {
@@ -86,10 +99,13 @@ export default function useFollowingSet(viewer: string | null) {
 
   /** Keeps the set in step with a follow/unfollow the user just made. */
   const markFollowing = useCallback((username: string, isFollowing: boolean) => {
+    pending.current.set(username, isFollowing);
     setFollowing((prev) => {
-      if (!prev) return prev;
-      if (prev.has(username) === isFollowing) return prev;
-      const next = new Set(prev);
+      // Seed a set even before the first page lands, so the button the viewer
+      // just pressed flips immediately. `pending` still holds the change so the
+      // arriving snapshot — which pre-dates it — cannot undo it.
+      if (prev && prev.has(username) === isFollowing) return prev;
+      const next = new Set(prev ?? []);
       if (isFollowing) next.add(username);
       else next.delete(username);
       return next;

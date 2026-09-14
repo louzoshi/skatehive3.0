@@ -48,13 +48,21 @@ const EMPTY: ResolvedLocation = {
 
 const NOWHERE_SET = new Set(NOWHERE_TOKENS);
 
-/** Words that, on their own, mean the person is being playful about location. */
-const NOWHERE_HINTS = [
-  "earth", "world", "mundo", "universe", "multiverse", "galax", "planet", "mars",
-  "moon", "metaverse", "cyberspace", "blockchain", "hive", "web3", "crypto",
-  "somewhere", "wherever", "everywhere", "nowhere", "anywhere", "africa", "asia",
-  "nomad", "space", "internet",
-];
+/**
+ * Words that, on their own, mean the person is being playful about location.
+ *
+ * Matched as WHOLE WORDS. These used to be tested with `includes`, which meant
+ * "mars" swallowed Marseille, "moon" swallowed Moonachie, "asia" swallowed
+ * Asiago and "earth" swallowed Earth City — real towns filed under 🛸.
+ * Variants are spelled out rather than reintroduced as prefixes.
+ */
+const NOWHERE_HINTS = new Set([
+  "earth", "world", "worldwide", "mundo", "universe", "multiverse",
+  "galaxy", "galaxie", "galaxia", "planet", "planeta", "mars", "moon", "luna",
+  "metaverse", "cyberspace", "blockchain", "hive", "web3", "crypto",
+  "somewhere", "wherever", "everywhere", "nowhere", "anywhere",
+  "africa", "asia", "nomad", "space", "internet",
+]);
 
 /**
  * Lowercase, strip accents and emoji, reduce every separator to a single space.
@@ -117,12 +125,17 @@ function findCity(segments: string[]): CityHit | null {
   return best;
 }
 
-function findCountry(segments: string[]): string | null {
-  // Exact segment match first — "united arab emirates", "south africa".
+/**
+ * A country the person actually spelled out: "brazil", "south africa", "usa".
+ *
+ * Bare two-letter codes are NOT considered here. They are the ambiguous case —
+ * "ca" is both California and Canada — so they get their own pass that runs
+ * after US states, in {@link findIsoCountry}.
+ */
+function findExplicitCountry(segments: string[]): string | null {
   for (const segment of segments) {
     const alias = COUNTRY_ALIASES[segment];
     if (alias) return alias;
-    if (segment.length === 2 && ISO_ALIASES[segment]) return ISO_ALIASES[segment];
   }
 
   // Then multi-word windows. Restricted to words of 4+ characters so that
@@ -134,14 +147,24 @@ function findCountry(segments: string[]): string | null {
       const alias = COUNTRY_ALIASES[window];
       if (alias) return alias;
     }
-    // A trailing token is very often the country, even when it is too short for
-    // the window scan above: "sp br", "ioannina gr", "south west uk".
+    // A trailing token is very often the country: "sp brasil", "south west uk".
     const last = words[words.length - 1];
-    if (!last) continue;
-    if (COUNTRY_ALIASES[last]) return COUNTRY_ALIASES[last];
-    if (last.length === 2 && ISO_ALIASES[last]) return ISO_ALIASES[last];
+    if (last && COUNTRY_ALIASES[last]) return COUNTRY_ALIASES[last];
   }
 
+  return null;
+}
+
+/** Bare two-letter country codes: "ioannina gr", "sp br". */
+function findIsoCountry(segments: string[]): string | null {
+  for (const segment of segments) {
+    if (segment.length === 2 && ISO_ALIASES[segment]) return ISO_ALIASES[segment];
+  }
+  for (const segment of segments) {
+    const words = segment.split(" ");
+    const last = words[words.length - 1];
+    if (last && last.length === 2 && ISO_ALIASES[last]) return ISO_ALIASES[last];
+  }
   return null;
 }
 
@@ -162,7 +185,7 @@ function findUsState(segments: string[]): { name: string; coords: LatLng } | nul
 function isNowhere(normalized: string, segments: string[]): boolean {
   if (NOWHERE_SET.has(normalized)) return true;
   if (segments.some((s) => NOWHERE_SET.has(s))) return true;
-  return NOWHERE_HINTS.some((hint) => normalized.includes(hint));
+  return normalized.split(" ").some((word) => NOWHERE_HINTS.has(word));
 }
 
 /**
@@ -180,9 +203,20 @@ export function resolveLocation(raw: string | undefined | null): ResolvedLocatio
 
   const segments = toSegments(cleaned);
 
+  // Everything is gathered before anything is chosen, because the pieces
+  // disambiguate each other: a US state tells us "CA" is California and not
+  // Canada, and a spelled-out country tells us "Lagos, Portugal" is not Nigeria.
   const cityHit = findCity(segments);
-  if (cityHit) {
-    const city = CITIES[cityHit.key];
+  const city = cityHit ? CITIES[cityHit.key] : null;
+  const explicitCountry = findExplicitCountry(segments);
+  const state = findUsState(segments);
+
+  // A state is itself a claim about the country, so it counts when deciding
+  // whether a city from the table agrees with the rest of the string.
+  const statedCountry = explicitCountry ?? (state ? "United States" : null);
+
+  // Trust the city only when nothing else contradicts it.
+  if (city && (!statedCountry || city.country === statedCountry)) {
     return {
       raw: trimmed,
       country: city.country,
@@ -193,26 +227,38 @@ export function resolveLocation(raw: string | undefined | null): ResolvedLocatio
     };
   }
 
-  const country = findCountry(segments);
-  if (country) {
-    return {
-      raw: trimmed,
-      country,
-      city: null,
-      coords: COUNTRY_CENTROIDS[country] ?? null,
-      label: country,
-      nowhere: false,
-    };
-  }
-
-  const state = findUsState(segments);
-  if (state) {
+  if (state && (!explicitCountry || explicitCountry === "United States")) {
     return {
       raw: trimmed,
       country: "United States",
       city: state.name,
       coords: state.coords,
       label: `${state.name}, United States`,
+      nowhere: false,
+    };
+  }
+
+  if (explicitCountry) {
+    return {
+      raw: trimmed,
+      country: explicitCountry,
+      city: null,
+      coords: COUNTRY_CENTROIDS[explicitCountry] ?? null,
+      label: explicitCountry,
+      nowhere: false,
+    };
+  }
+
+  // Bare ISO codes come last: by here no state and no spelled-out country
+  // claimed the string, so "gr" really is Greece.
+  const isoCountry = findIsoCountry(segments);
+  if (isoCountry) {
+    return {
+      raw: trimmed,
+      country: isoCountry,
+      city: null,
+      coords: COUNTRY_CENTROIDS[isoCountry] ?? null,
+      label: isoCountry,
       nowhere: false,
     };
   }

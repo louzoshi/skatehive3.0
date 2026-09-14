@@ -35,7 +35,8 @@ function it(name: string, fn: () => void) {
 }
 
 const NOW = Date.parse("2026-09-14T12:00:00Z");
-const daysAgo = (days: number) => new Date(NOW - days * DAY_MS).toISOString();
+/** Epoch seconds, matching the Skater payload's `lastPost`. */
+const daysAgo = (days: number) => Math.floor((NOW - days * DAY_MS) / 1000);
 
 function skater(overrides: Partial<Skater> = {}): Skater {
   return { username: "rider", ...overrides };
@@ -55,11 +56,14 @@ it("buckets by how long ago someone last posted", () => {
 it("treats a skater who has never posted as dormant, not as brand new", () => {
   assert.strictEqual(activityTier(skater({}), NOW), "dormant");
   assert.strictEqual(daysSince(undefined, NOW), null);
-  assert.strictEqual(daysSince("not a date", NOW), null);
+  // NaN is falsy, so an unparseable upstream timestamp still reads as "none"
+  // rather than poisoning the sort with NaN comparisons.
+  assert.strictEqual(daysSince(Number.NaN, NOW), null);
+  assert.strictEqual(daysSince(0, NOW), null);
 });
 
 it("never reports a negative age for a future timestamp", () => {
-  assert.strictEqual(daysSince(new Date(NOW + 5 * DAY_MS).toISOString(), NOW), 0);
+  assert.strictEqual(daysSince(Math.floor((NOW + 5 * DAY_MS) / 1000), NOW), 0);
 });
 
 console.log("\n📦 search");
