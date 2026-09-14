@@ -307,7 +307,3 @@ export function countryFromSlug(slug: string): string | null {
   return null;
 }
 
-/** Every country we can build a page for, alphabetically. */
-export function knownCountries(): string[] {
-  return Object.keys(COUNTRY_CENTROIDS).sort();
-}

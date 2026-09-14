@@ -11,7 +11,7 @@ const ogImageUrl = `${BASE_URL}/api/og/page?title=Skaters&subtitle=Meet%20the%20
 /** Countries listed in the page's structured data and crawlable links. */
 const STRUCTURED_COUNTRY_LIMIT = 40;
 
-export const metadata: Metadata = {
+const baseMetadata: Metadata = {
   // No "| Skatehive" suffix here: the root layout's title template adds it.
   title: "Skateboarders Directory — Find Skaters by Country & City",
   description:
@@ -71,6 +71,17 @@ export const metadata: Metadata = {
 };
 
 export const revalidate = 300; // ISR: render once, refresh every 5 min (static-safe page)
+
+/**
+ * Same reasoning as the country pages: if the snapshot came back empty the
+ * upstream build failed, and a directory listing nobody should not be indexed
+ * while that is true.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const data = await getSkaterDirectory();
+  if (data.skaters.length > 0) return baseMetadata;
+  return { ...baseMetadata, robots: { index: false, follow: true } };
+}
 
 export default async function SkatersPage() {
   const data = await getSkaterDirectory();

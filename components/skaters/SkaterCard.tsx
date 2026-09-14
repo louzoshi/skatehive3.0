@@ -40,9 +40,12 @@ const TIER_LABEL_KEY: Record<ActivityTier, string> = {
   dormant: "skaters.tierDormant",
 };
 
-/** "3d", "4mo", "2y" — the same shorthand the leaderboard uses. */
+/**
+ * "3d", "4mo", "2y" — the same shorthand the leaderboard uses.
+ * Only called with days >= 1; the caller renders a translated "posted today"
+ * for anything below that, so there is no English literal to reach here.
+ */
 function formatAge(days: number): string {
-  if (days < 1) return "today";
   if (days < 30) return `${days}d`;
   if (days < 365) return `${Math.floor(days / 30)}mo`;
   return `${Math.floor(days / 365)}y`;

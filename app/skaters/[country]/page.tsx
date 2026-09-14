@@ -23,7 +23,15 @@ async function resolveCountry(slug: string) {
   if (!country) return null;
   const data = await getSkaterDirectory();
   const skaters = data.skaters.filter((skater) => skater.country === country);
-  return { country, skaters, generatedAt: data.generatedAt, countries: data.countries };
+  return {
+    country,
+    skaters,
+    generatedAt: data.generatedAt,
+    countries: data.countries,
+    // An empty directory means the upstream build failed, not that the
+    // community vanished. Either way there is nothing here worth indexing.
+    isEmpty: skaters.length === 0,
+  };
 }
 
 /**
@@ -50,7 +58,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     return { title: "Skaters", robots: { index: false, follow: false } };
   }
 
-  const { country, skaters } = resolved;
+  const { country, skaters, isEmpty } = resolved;
   const cities = Array.from(
     new Set(skaters.map((skater) => skater.city).filter(Boolean) as string[])
   ).slice(0, 6);
@@ -90,6 +98,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       images: [ogImageUrl],
     },
     alternates: { canonical: `${BASE_URL}/skaters/${countrySlug(country)}` },
+    // Keep a page with nobody on it out of the index. Without this, an outage
+    // upstream publishes 66 indexable "0 Skaters" pages behind a 200.
+    ...(isEmpty ? { robots: { index: false, follow: true } } : {}),
   };
 }
 
