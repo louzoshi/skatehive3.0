@@ -1019,7 +1019,6 @@ export const ptBR = {
     skatehiveNfts: '🎨 NFTs Skatehive',
     gnarsNfts: '🖼️ NFTs Gnars',
     gnarsVoters: '🪙 Votantes Gnars',
-    donations: '🎁 Doações',
     hive: '💰 Hive',
     missingEth: '🦄 ETH Ausente',
     donationsDollar: '🎁 Doações ($)',

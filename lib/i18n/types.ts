@@ -787,7 +787,6 @@ export interface TranslationSchema {
     skatehiveNfts: string;
     gnarsNfts: string;
     gnarsVoters: string;
-    donations: string;
     hive: string;
     missingEth: string;
     donationsDollar: string;

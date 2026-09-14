@@ -1002,7 +1002,6 @@ export const en = {
     skatehiveNfts: '🎨 Skatehive NFTs',
     gnarsNfts: '🖼️ Gnars NFTs',
     gnarsVoters: '🪙 Gnars Voters',
-    donations: '🎁 Donations',
     hive: '💰 Hive',
     missingEth: '🦄 Missing ETH',
     donationsDollar: '🎁 Donations ($)',

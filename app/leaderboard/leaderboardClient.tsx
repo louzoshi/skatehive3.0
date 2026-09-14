@@ -139,6 +139,106 @@ EthAddress.displayName = "EthAddress";
 
 
 // Memoized skater row component
+// Simplified columns for mobile
+const mobileColumns: LeaderboardColumn[] = [
+  {
+    key: "points",
+    label: "Points",
+    value: (skater: SkaterData) => Math.round(skater.points),
+  },
+  {
+    key: "power",
+    label: "Power",
+    value: (skater: SkaterData) =>
+      formatNumber(skater.hp_balance + skater.max_voting_power_usd),
+  },
+  {
+    key: "posts",
+    label: "Posts Score",
+    value: (skater: SkaterData) => skater.posts_score,
+  },
+];
+
+// Full columns for desktop
+const desktopColumns: LeaderboardColumn[] = [
+  {
+    key: "points",
+    label: "🏆 Points",
+    value: (skater: SkaterData) => Math.round(skater.points),
+  },
+  {
+    key: "power",
+    label: (
+      <HStack spacing={1} justify="center">
+        <Image src="/images/hp_logo.png" alt="" h="18px" display="inline" />
+        <Text as="span">HP</Text>
+      </HStack>
+    ),
+    value: (skater: SkaterData) =>
+      formatNumber(skater.hp_balance + skater.max_voting_power_usd),
+  },
+  {
+    key: "voting_mana",
+    label: "Voting Mana",
+    value: (skater: SkaterData) =>
+      skater.max_voting_power_usd != null
+        ? `$${skater.max_voting_power_usd.toFixed(2)}`
+        : "-",
+  },
+  {
+    key: "posts",
+    label: "Posts Score",
+    value: (skater: SkaterData) => skater.posts_score,
+  },
+  {
+    key: "nfts",
+    label: "SKTHV NFTs",
+    value: (skater: SkaterData) => skater.skatehive_nft_balance,
+  },
+  {
+    key: "gnars_balance",
+    label: "Gnars NFTs",
+    value: (skater: SkaterData) => skater.gnars_balance,
+  },
+  {
+    key: "gnars",
+    label: "Gnars Votes",
+    value: (skater: SkaterData) => skater.gnars_votes,
+  },
+  {
+    key: "hbd",
+    label: (
+      <HStack spacing={1} justify="center">
+        <Image
+          src="/images/hbd_savings.png"
+          alt=""
+          h="18px"
+          display="inline"
+        />
+        <Text as="span">HBD</Text>
+      </HStack>
+    ),
+    value: (skater: SkaterData) =>
+      formatNumber(skater.hbd_balance + skater.hbd_savings_balance),
+  },
+  {
+    key: "hive",
+    label: "Hive",
+    value: (skater: SkaterData) => formatNumber(skater.hive_balance),
+  },
+  {
+    key: "donations",
+    label: "Giveth",
+    value: (skater: SkaterData) => formatNumber(skater.giveth_donations_usd),
+  },
+  {
+    key: "witness",
+    label: "Witness",
+    value: (skater: SkaterData) =>
+      skater.has_voted_in_witness ? "✅" : "❌",
+  },
+];
+
 interface SkaterRowProps {
   skater: SkaterData;
   rank: number;
@@ -346,105 +446,6 @@ export default function LeaderboardClient({ skatersData }: Props) {
     return sorted.slice(0, 50); // Top 50
   }, [realSkaters, sortBy]);
 
-  // Simplified columns for mobile
-  const mobileColumns = [
-    {
-      key: "points",
-      label: "Points",
-      value: (skater: SkaterData) => Math.round(skater.points),
-    },
-    {
-      key: "power",
-      label: "Power",
-      value: (skater: SkaterData) =>
-        formatNumber(skater.hp_balance + skater.max_voting_power_usd),
-    },
-    {
-      key: "posts",
-      label: "Posts Score",
-      value: (skater: SkaterData) => skater.posts_score,
-    },
-  ];
-
-  // Full columns for desktop
-  const desktopColumns = [
-    {
-      key: "points",
-      label: "🏆 Points",
-      value: (skater: SkaterData) => Math.round(skater.points),
-    },
-    {
-      key: "power",
-      label: (
-        <HStack spacing={1} justify="center">
-          <Image src="/images/hp_logo.png" alt="" h="18px" display="inline" />
-          <Text as="span">HP</Text>
-        </HStack>
-      ),
-      value: (skater: SkaterData) =>
-        formatNumber(skater.hp_balance + skater.max_voting_power_usd),
-    },
-    {
-      key: "voting_mana",
-      label: "Voting Mana",
-      value: (skater: SkaterData) =>
-        skater.max_voting_power_usd != null
-          ? `$${skater.max_voting_power_usd.toFixed(2)}`
-          : "-",
-    },
-    {
-      key: "posts",
-      label: "Posts Score",
-      value: (skater: SkaterData) => skater.posts_score,
-    },
-    {
-      key: "nfts",
-      label: "SKTHV NFTs",
-      value: (skater: SkaterData) => skater.skatehive_nft_balance,
-    },
-    {
-      key: "gnars_balance",
-      label: "Gnars NFTs",
-      value: (skater: SkaterData) => skater.gnars_balance,
-    },
-    {
-      key: "gnars",
-      label: "Gnars Votes",
-      value: (skater: SkaterData) => skater.gnars_votes,
-    },
-    {
-      key: "hbd",
-      label: (
-        <HStack spacing={1} justify="center">
-          <Image
-            src="/images/hbd_savings.png"
-            alt=""
-            h="18px"
-            display="inline"
-          />
-          <Text as="span">HBD</Text>
-        </HStack>
-      ),
-      value: (skater: SkaterData) =>
-        formatNumber(skater.hbd_balance + skater.hbd_savings_balance),
-    },
-    {
-      key: "hive",
-      label: "Hive",
-      value: (skater: SkaterData) => formatNumber(skater.hive_balance),
-    },
-    {
-      key: "donations",
-      label: "Giveth",
-      value: (skater: SkaterData) => formatNumber(skater.giveth_donations_usd),
-    },
-    {
-      key: "witness",
-      label: "Witness",
-      value: (skater: SkaterData) =>
-        skater.has_voted_in_witness ? "✅" : "❌",
-    },
-  ];
 
   const columns = isMobile ? mobileColumns : desktopColumns;
   return (
