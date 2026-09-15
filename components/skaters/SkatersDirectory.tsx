@@ -168,7 +168,10 @@ export default function SkatersDirectory({ data, lockedCountry }: SkatersDirecto
     if (deferredQuery.trim()) params.set("q", deferredQuery.trim());
     if (!lockedCountry && country) params.set("country", country);
     if (tier) params.set("activity", tier);
-    if (sortKey !== "active") params.set("sort", sortKey);
+    // "near" is deliberately not published: it depends on the viewer's own
+    // position, so the reader below rejects it and the link would not reproduce
+    // for whoever opens it.
+    if (sortKey !== "active" && sortKey !== NEAR_SORT_KEY) params.set("sort", sortKey);
     if (view !== "list") params.set("view", view);
     const search = params.toString();
     const next = `${window.location.pathname}${search ? `?${search}` : ""}`;
@@ -531,12 +534,20 @@ export default function SkatersDirectory({ data, lockedCountry }: SkatersDirecto
           </Flex>
         )}
 
-        <Text fontSize="xs" color="gray.500" mb={5}>
-          {tVars(t("skaters.showing"), {
-            shown: Math.min(visible.length, sorted.length),
-            total: data.skaters.length,
-          })}
-        </Text>
+        {/* Only the list view paginates, so only there does "showing X of Y"
+            describe anything. The countries view carries a count on every
+            group heading and the map carries one on its layer toggle. The
+            total is the CURRENT result set: reading it off data.skaters made
+            the line say "showing 30 of 1706" while a country filter had the
+            grid down to 78. */}
+        {view === "list" && (
+          <Text fontSize="xs" color="gray.500" mb={5}>
+            {tVars(t("skaters.showing"), {
+              shown: visible.length,
+              total: sorted.length,
+            })}
+          </Text>
+        )}
 
         {/* Results */}
         {sorted.length === 0 ? (
@@ -563,6 +574,12 @@ export default function SkatersDirectory({ data, lockedCountry }: SkatersDirecto
             origin={origin}
           />
         ) : view === "countries" ? (
+          // Every group is capped at PAGE_SIZE. Without it this view rendered
+          // one card per skater with no pagination at all — ~900 of them on an
+          // unfiltered /skaters, each carrying a FollowButton — while the list
+          // view next to it was careful to draw 30. It is an overview: the
+          // count on each heading gives the real size and the heading links to
+          // that country's own page.
           <VStack spacing={8} align="stretch">
             {byCountry.ordered.map(([name, list]) => (
               <Box key={name} as="section">
@@ -587,7 +604,12 @@ export default function SkatersDirectory({ data, lockedCountry }: SkatersDirecto
                     {list.length}
                   </Badge>
                 </Flex>
-                {renderGrid(list)}
+                {renderGrid(list.slice(0, PAGE_SIZE))}
+                {list.length > PAGE_SIZE && (
+                  <Text fontSize="xs" color="dim" mt={3}>
+                    {tVars(t("skaters.moreInList"), { count: list.length - PAGE_SIZE })}
+                  </Text>
+                )}
               </Box>
             ))}
 
@@ -604,7 +626,14 @@ export default function SkatersDirectory({ data, lockedCountry }: SkatersDirecto
                     {byCountry.nowhere.length}
                   </Badge>
                 </Flex>
-                {renderGrid(byCountry.nowhere)}
+                {renderGrid(byCountry.nowhere.slice(0, PAGE_SIZE))}
+                {byCountry.nowhere.length > PAGE_SIZE && (
+                  <Text fontSize="xs" color="dim" mt={3}>
+                    {tVars(t("skaters.moreInList"), {
+                      count: byCountry.nowhere.length - PAGE_SIZE,
+                    })}
+                  </Text>
+                )}
               </Box>
             )}
 

@@ -6,16 +6,6 @@ import { getSpotmapSupabase } from "@/lib/spotmap/supabase";
 const MAX_ROWS = 10000;
 
 /**
- * How many spots each skater has put on the map, keyed by Hive handle.
- *
- * Restricted to `source = 'hive'` on purpose: KML rows carry the synthetic
- * "skatehive-map" author, so counting them would credit a real-looking handle
- * with spots nobody added.
- *
- * Returns {} rather than throwing when the spot backend is unreachable or
- * unconfigured — the directory predates spots and must still render without it.
- */
-/**
  * The query itself. Throws on any failure so that `unstable_cache` never
  * stores an empty result: a cached {} would keep every spot badge off the page
  * for the full revalidate window after one bad minute — which is exactly what
