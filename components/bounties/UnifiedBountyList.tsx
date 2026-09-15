@@ -1,324 +1,237 @@
 'use client';
 
-import { useCallback, useEffect, useState, useMemo } from 'react';
-import {
-  Box,
-  SimpleGrid,
-  Text,
-  Spinner,
-  Button,
-  HStack,
-  VStack,
-} from '@chakra-ui/react';
-import { useComments } from '@/hooks/useComments';
-import { usePoidhBounties } from '@/hooks/usePoidhBounties';
-import HiveClient from '@/lib/hive/hiveclient';
-import { useMarketPrices } from '@/hooks/useMarketPrices';
-import { normalizeHiveBounty, normalizePoidhBounty } from '@/lib/bounty-normalizers';
+import { useCallback, useEffect, useRef } from 'react';
+import { Box, SimpleGrid, Text, Button, HStack, VStack, Icon } from '@chakra-ui/react';
+import { keyframes } from '@emotion/react';
+import { FaBolt, FaSkull } from 'react-icons/fa';
+import { useTranslations } from '@/contexts/LocaleContext';
 import { UnifiedBountyCard } from './UnifiedBountyCard';
 import type { UnifiedBounty } from '@/types/unified-bounty';
-import type { Discussion } from '@hiveio/dhive';
 
-export type SourceFilter = 'all' | 'hive' | 'poidh';
+export type { SourceFilter } from './board-filters';
+
+interface Prices {
+  hivePrice?: number | null;
+  hbdPrice?: number | null;
+  ethPrice?: number | null;
+}
 
 interface UnifiedBountyListProps {
-  newBounty?: Discussion | null;
-  refreshTrigger?: number;
-  sourceFilter?: SourceFilter;
-  onBountiesLoaded?: (bounties: UnifiedBounty[]) => void;
+  openBounties: UnifiedBounty[];
+  closedBounties: UnifiedBounty[];
+  /** Total before the "show more" slice, for the section headers. */
+  totalOpen: number;
+  totalClosed: number;
+  isLoading: boolean;
+  isFetchingMore: boolean;
+  hasMore: boolean;
+  onLoadMore: () => void;
+  prices: Prices;
+  /** The board has bounties, they just don't match the filters. */
+  boardHasBounties: boolean;
+  onClearFilters: () => void;
+  onCreate: () => void;
+}
+
+const shimmer = keyframes`
+  0%   { background-position: -320px 0; }
+  100% { background-position: 320px 0; }
+`;
+
+const alpha = (token: string, pct: number) =>
+  `color-mix(in srgb, var(--chakra-colors-${token}) ${pct}%, transparent)`;
+
+function BountyCardSkeleton() {
+  const shimmerBg = {
+    bgImage: `linear-gradient(90deg, var(--chakra-colors-muted), ${alpha('primary', 10)}, var(--chakra-colors-muted))`,
+    backgroundSize: '320px 100%',
+    animation: `${shimmer} 1.4s linear infinite`,
+  };
+  return (
+    <Box border="1px solid" borderColor="border" bg="background" h="100%" aria-hidden>
+      <Box h={{ base: '150px', md: '160px' }} {...shimmerBg} />
+      <VStack align="stretch" spacing={2} p={3}>
+        <Box h="14px" w="80%" {...shimmerBg} />
+        <Box h="10px" w="95%" {...shimmerBg} />
+        <Box h="10px" w="60%" {...shimmerBg} />
+      </VStack>
+      <Box borderTop="1px solid" borderColor="border" p={3}>
+        <Box h="12px" w="45%" {...shimmerBg} />
+      </Box>
+    </Box>
+  );
+}
+
+function SectionHeading({
+  label,
+  count,
+  color,
+}: {
+  label: string;
+  count: number;
+  color: string;
+}) {
+  return (
+    <HStack spacing={3} mb={3} align="center">
+      <Text
+        fontSize="xs"
+        fontWeight="bold"
+        fontFamily="mono"
+        color={color}
+        textTransform="uppercase"
+        letterSpacing="wider"
+        whiteSpace="nowrap"
+      >
+        {label}
+      </Text>
+      <Box px={1.5} border="1px solid" borderColor={color}>
+        <Text fontSize="2xs" fontFamily="mono" fontWeight="bold" color={color}>
+          {count}
+        </Text>
+      </Box>
+      <Box flex={1} h="1px" bg={alpha(color, 35)} />
+    </HStack>
+  );
 }
 
 export default function UnifiedBountyList({
-  newBounty,
-  refreshTrigger,
-  sourceFilter = 'all',
-  onBountiesLoaded,
+  openBounties,
+  closedBounties,
+  totalOpen,
+  totalClosed,
+  isLoading,
+  isFetchingMore,
+  hasMore,
+  onLoadMore,
+  prices,
+  boardHasBounties,
+  onClearFilters,
+  onCreate,
 }: UnifiedBountyListProps) {
-  const [visibleCount, setVisibleCount] = useState(12);
-  const { hivePrice, hbdPrice, ethPrice } = useMarketPrices();
+  const t = useTranslations('bounties');
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Convert bounty reward to USD for sorting
-  const toUsd = useCallback((b: UnifiedBounty): number => {
-    switch (b.rewardCurrency) {
-      case 'ETH': return b.rewardAmount * (ethPrice ?? 2500);
-      case 'HBD': return b.rewardAmount * (hbdPrice ?? 1);
-      case 'HIVE': return b.rewardAmount * (hivePrice ?? 0.21);
-      default: return b.rewardAmount;
-    }
-  }, [hivePrice, hbdPrice, ethPrice]);
+  const isEmpty = !isLoading && openBounties.length === 0 && closedBounties.length === 0;
 
-  // ── Hive data ─────────────────────────────────────────────
-  const { comments, isLoading: hiveLoading, updateComments } = useComments(
-    'skatehive',
-    'skatehive-bounties',
-    false
+  // Auto-load the next page when the bottom of the list comes into view; the
+  // button below stays as the keyboard/no-observer path.
+  const loadMoreRef = useRef(onLoadMore);
+  loadMoreRef.current = onLoadMore;
+
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || !hasMore || typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMoreRef.current();
+      },
+      { rootMargin: '400px' },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, isFetchingMore]);
+
+  const renderGrid = useCallback(
+    (bounties: UnifiedBounty[]) => (
+      <SimpleGrid columns={{ base: 1, sm: 2, xl: 3 }} gap={4}>
+        {bounties.map((bounty, i) => (
+          <UnifiedBountyCard key={bounty.id} bounty={bounty} index={i} {...prices} />
+        ))}
+      </SimpleGrid>
+    ),
+    [prices],
   );
 
-  // Hive bounty metadata (submission counts + rewarded status + winners)
-  const [hiveMeta, setHiveMeta] = useState<{
-    submissionCounts: Record<string, number>;
-    rewardedSet: Set<string>;
-    winners: Record<string, string>;
-  }>({ submissionCounts: {}, rewardedSet: new Set(), winners: {} });
-
-  // Prepend newBounty if exists
-  const hiveDiscussions = useMemo(() => {
-    let bounties = [...comments];
-    if (newBounty) {
-      const exists = bounties.some((c) => c.permlink === newBounty.permlink);
-      if (!exists) bounties = [newBounty, ...bounties];
-    }
-    return bounties;
-  }, [comments, newBounty]);
-
-  // Refresh on trigger
-  useEffect(() => {
-    if (refreshTrigger !== undefined) updateComments();
-  }, [refreshTrigger, updateComments]);
-
-  // Fetch submission counts + rewarded status for all Hive bounties
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchMeta() {
-      const submissionCounts: Record<string, number> = {};
-      const rewardedSet = new Set<string>();
-      const winners: Record<string, string> = {};
-
-      await Promise.all(
-        hiveDiscussions.map(async (bounty) => {
-          const key = `${bounty.author}-${bounty.permlink}`;
-          try {
-            const replies = await HiveClient.database.call(
-              'get_content_replies',
-              [bounty.author, bounty.permlink]
-            );
-            if (replies && Array.isArray(replies)) {
-              const rewardReply = replies.find(
-                (r: any) =>
-                  r.author === bounty.author &&
-                  r.body.includes('\u{1F3C6} Bounty Winners! \u{1F3C6}')
-              );
-              if (rewardReply) {
-                rewardedSet.add(key);
-                // Extract first winner: "🥇 @username - 5.000 HBD"
-                const winnerMatch = (rewardReply as any).body.match(/@(\w[\w.-]*)/);
-                if (winnerMatch) winners[key] = winnerMatch[1];
-              }
-
-              const deadlineMatch = bounty.body.match(/Deadline:\s*(\d{2}-\d{2}-\d{4})/);
-              let deadline: Date | null = null;
-              if (deadlineMatch) {
-                const [mm, dd, yyyy] = deadlineMatch[1].split('-');
-                deadline = new Date(`${yyyy}-${mm}-${dd}T23:59:59`);
-              }
-              let count = 0;
-              replies.forEach((r: any) => {
-                if (r.author && deadline && r.created) {
-                  if (new Date(r.created) < deadline) count++;
-                }
-              });
-              submissionCounts[key] = count;
-            } else {
-              submissionCounts[key] = 0;
-            }
-          } catch {
-            submissionCounts[key] = 0;
-          }
-        })
-      );
-      if (!cancelled) {
-        setHiveMeta({ submissionCounts, rewardedSet, winners });
-      }
-    }
-    if (hiveDiscussions.length > 0) fetchMeta();
-    return () => { cancelled = true; };
-  }, [hiveDiscussions]);
-
-  // Normalize Hive bounties (filter out 0-reward entries)
-  const hiveBounties: UnifiedBounty[] = useMemo(() => {
-    return hiveDiscussions
-      .map((d) => {
-        const key = `${d.author}-${d.permlink}`;
-        return normalizeHiveBounty(
-          d,
-          hiveMeta.submissionCounts[key] ?? 0,
-          hiveMeta.rewardedSet.has(key),
-          hiveMeta.winners[key] ?? null
-        );
-      })
-      .filter((b) => b.rewardAmount >= 1);
-  }, [hiveDiscussions, hiveMeta]);
-
-  // ── POIDH data ────────────────────────────────────────────
-  const {
-    bounties: poidhOpenRaw,
-    loading: poidhOpenLoading,
-    hasMore: poidhOpenHasMore,
-    loadMore: poidhOpenLoadMore,
-  } = usePoidhBounties({ status: 'open', filterSkate: true });
-
-  const {
-    bounties: poidhPastRaw,
-    loading: poidhPastLoading,
-    hasMore: poidhPastHasMore,
-    loadMore: poidhPastLoadMore,
-  } = usePoidhBounties({ status: 'past', filterSkate: true });
-
-  const poidhBounties: UnifiedBounty[] = useMemo(() => {
-    const all = [...poidhOpenRaw, ...poidhPastRaw];
-    const seen = new Set<string>();
-    return all
-      .filter((b) => {
-        const key = `${b.chainId}-${b.id}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .map(normalizePoidhBounty);
-  }, [poidhOpenRaw, poidhPastRaw]);
-
-  // ── Merge + filter ────────────────────────────────────────
-  const allBounties = useMemo(() => {
-    return [...hiveBounties, ...poidhBounties];
-  }, [hiveBounties, poidhBounties]);
-
-  // Notify parent of loaded bounties
-  useEffect(() => {
-    if (onBountiesLoaded && allBounties.length > 0) {
-      onBountiesLoaded(allBounties);
-    }
-  }, [allBounties, onBountiesLoaded]);
-
-  const filteredBounties = useMemo(() => {
-    if (sourceFilter === 'all') return allBounties;
-    return allBounties.filter((b) => b.source === sourceFilter);
-  }, [allBounties, sourceFilter]);
-
-  // Split into open and closed, sorted by date
-  const openBounties = useMemo(() => {
-    return filteredBounties
-      .filter((b) => b.isActive)
-      .sort((a, b) => toUsd(b) - toUsd(a));
-  }, [filteredBounties, toUsd]);
-
-  const closedBounties = useMemo(() => {
-    return filteredBounties
-      .filter((b) => !b.isActive)
-      .sort((a, b) => toUsd(b) - toUsd(a));
-  }, [filteredBounties, toUsd]);
-
-  const visibleClosed = closedBounties.slice(0, visibleCount);
-  const hasMore = visibleCount < closedBounties.length || poidhOpenHasMore || poidhPastHasMore;
-
-  const handleLoadMore = useCallback(() => {
-    setVisibleCount((prev) => prev + 12);
-    if (poidhOpenHasMore) poidhOpenLoadMore();
-    if (poidhPastHasMore) poidhPastLoadMore();
-  }, [poidhOpenHasMore, poidhOpenLoadMore, poidhPastHasMore, poidhPastLoadMore]);
-
-  const isLoading = hiveLoading || poidhOpenLoading || poidhPastLoading;
-
-  // Reset visible count on filter change
-  useEffect(() => {
-    setVisibleCount(12);
-  }, [sourceFilter]);
-
   return (
-    <VStack align="stretch" spacing={6}>
-      {/* Loading state */}
-      {isLoading && allBounties.length === 0 && (
-        <VStack py={12} gap={3}>
-          <Spinner size="lg" color="primary" thickness="3px" />
-          <Text color="dim" fontSize="sm" fontFamily="mono">
-            loading bounties...
-          </Text>
+    <VStack align="stretch" spacing={8}>
+      {isLoading && (
+        <SimpleGrid columns={{ base: 1, sm: 2, xl: 3 }} gap={4}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <BountyCardSkeleton key={i} />
+          ))}
+        </SimpleGrid>
+      )}
+
+      {isEmpty && (
+        <VStack
+          spacing={4}
+          py={16}
+          px={6}
+          border="1px dashed"
+          borderColor="border"
+          bg="muted"
+          textAlign="center"
+        >
+          <Icon as={FaSkull} boxSize="28px" color="dim" opacity={0.5} />
+          <VStack spacing={1}>
+            <Text fontSize="sm" fontWeight="bold" fontFamily="mono" color="text" textTransform="uppercase">
+              {boardHasBounties ? t('hubEmptyFilteredTitle') : t('hubEmptyTitle')}
+            </Text>
+            <Text fontSize="xs" fontFamily="mono" color="dim" maxW="360px">
+              {boardHasBounties ? t('hubEmptyFilteredBody') : t('hubEmptyBody')}
+            </Text>
+          </VStack>
+          {boardHasBounties ? (
+            <Button
+              size="sm"
+              variant="outline"
+              borderRadius="none"
+              borderColor="primary"
+              color="primary"
+              fontFamily="mono"
+              fontSize="xs"
+              textTransform="uppercase"
+              letterSpacing="wider"
+              _hover={{ bg: 'primary', color: 'background' }}
+              onClick={onClearFilters}
+            >
+              {t('hubClearFilters')}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              borderRadius="none"
+              bg="primary"
+              color="background"
+              fontFamily="mono"
+              fontSize="xs"
+              textTransform="uppercase"
+              letterSpacing="wider"
+              leftIcon={<Icon as={FaBolt} boxSize="10px" />}
+              _hover={{ bg: 'accent' }}
+              onClick={onCreate}
+            >
+              {t('hubCreate')}
+            </Button>
+          )}
         </VStack>
       )}
 
-      {/* Empty state */}
-      {!isLoading && filteredBounties.length === 0 && (
-        <Box
-          textAlign="center"
-          py={12}
-          px={4}
-          borderRadius="none"
-          border="1px solid"
-          borderColor="border"
-          bg="muted"
-        >
-          <Text fontSize="sm" fontWeight="bold" color="text" mb={2} fontFamily="mono">
-            {sourceFilter === 'hive'
-              ? 'No Hive bounties found'
-              : sourceFilter === 'poidh'
-                ? 'No POIDH bounties found'
-                : 'No bounties found'}
-          </Text>
-          <Text fontSize="xs" color="dim" fontFamily="mono">
-            Create a bounty on Hive or POIDH to get started
-          </Text>
-        </Box>
-      )}
-
-      {/* ── Open bounties: horizontal slider ──── */}
       {openBounties.length > 0 && (
         <Box>
-          <Text
-            fontSize="xs"
-            fontWeight="bold"
-            fontFamily="mono"
-            color="success"
-            textTransform="uppercase"
-            letterSpacing="wider"
-            mb={3}
-          >
-            OPEN BOUNTIES ({openBounties.length})
-          </Text>
-          <SimpleGrid columns={{ base: 1, sm: 2, lg: 3 }} gap={4}>
-            {openBounties.map((bounty) => (
-              <UnifiedBountyCard key={bounty.id} bounty={bounty} hivePrice={hivePrice} hbdPrice={hbdPrice} ethPrice={ethPrice} />
-            ))}
-          </SimpleGrid>
+          <SectionHeading label={t('hubOpenSection')} count={totalOpen} color="success" />
+          {renderGrid(openBounties)}
         </Box>
       )}
 
-      {/* ── Closed bounties: grid ─────────────── */}
-      {visibleClosed.length > 0 && (
+      {closedBounties.length > 0 && (
         <Box>
-          <Text
-            fontSize="xs"
-            fontWeight="bold"
-            fontFamily="mono"
-            color="dim"
-            textTransform="uppercase"
-            letterSpacing="wider"
-            mb={3}
-          >
-            CLOSED BOUNTIES ({closedBounties.length})
-          </Text>
-          <SimpleGrid columns={{ base: 1, sm: 2, lg: 3 }} gap={4}>
-            {visibleClosed.map((bounty) => (
-              <UnifiedBountyCard key={bounty.id} bounty={bounty} hivePrice={hivePrice} hbdPrice={hbdPrice} ethPrice={ethPrice} />
-            ))}
-          </SimpleGrid>
+          <SectionHeading label={t('hubClosedSection')} count={totalClosed} color="dim" />
+          {renderGrid(closedBounties)}
         </Box>
       )}
 
-      {/* Load more */}
-      {hasMore && visibleClosed.length > 0 && (
-        <Box
-          textAlign="center"
-          py={3}
-          borderTop="1px solid"
-          borderBottom="1px solid"
-          borderColor="border"
-        >
+      {/* Infinite-scroll trigger + explicit fallback */}
+      {hasMore && !isEmpty && (
+        <Box ref={sentinelRef} textAlign="center" py={2}>
           <Button
-            onClick={handleLoadMore}
-            isLoading={isLoading && allBounties.length > 0}
-            loadingText="LOADING..."
+            onClick={onLoadMore}
+            isLoading={isFetchingMore}
+            loadingText={t('hubLoadingMore')}
             size="sm"
             variant="unstyled"
-            color="text"
+            color="dim"
             fontWeight="bold"
             fontFamily="mono"
             textTransform="uppercase"
@@ -326,17 +239,9 @@ export default function UnifiedBountyList({
             fontSize="xs"
             _hover={{ color: 'primary' }}
           >
-            + LOAD MORE BOUNTIES
+            + {t('hubLoadMore')}
           </Button>
         </Box>
-      )}
-
-      {/* Inline loading indicator */}
-      {isLoading && allBounties.length > 0 && (
-        <HStack justify="center" py={2} gap={2}>
-          <Spinner size="sm" color="primary" />
-          <Text fontSize="sm" color="dim" fontFamily="mono">loading...</Text>
-        </HStack>
       )}
     </VStack>
   );

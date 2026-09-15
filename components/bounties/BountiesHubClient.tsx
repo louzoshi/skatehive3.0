@@ -1,364 +1,297 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import {
-  Box,
-  Container,
-  HStack,
-  VStack,
-  Text,
-  Button,
-  Icon,
-  Flex,
-  Avatar,
-} from '@chakra-ui/react';
-import { FaHive, FaEthereum, FaPen, FaFolder, FaCheckCircle, FaTrophy } from 'react-icons/fa';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Box, Container, Flex, Icon, Text, VStack } from '@chakra-ui/react';
+import { FaEthereum, FaHive } from 'react-icons/fa';
 import useIsMobile from '@/hooks/useIsMobile';
 import useEffectiveHiveUser from '@/hooks/useEffectiveHiveUser';
+import { useMarketPrices } from '@/hooks/useMarketPrices';
+import useUnifiedBounties from '@/hooks/useUnifiedBounties';
+import { useTranslations } from '@/contexts/LocaleContext';
+import { tVars } from '@/lib/i18n/format';
 import SkateModal from '@/components/shared/SkateModal';
 import BountyComposer from '@/components/bounties/BountyComposer';
 import PoidhBountyComposer from '@/components/bounties/PoidhBountyComposer';
 import UnifiedBountyList from '@/components/bounties/UnifiedBountyList';
-import type { SourceFilter } from '@/components/bounties/UnifiedBountyList';
+import BountyBoardHeader from '@/components/bounties/BountyBoardHeader';
+import BountyBoardToolbar from '@/components/bounties/BountyBoardToolbar';
+import BountyBoardSidebar from '@/components/bounties/BountyBoardSidebar';
+import type { PoolSlice, WinnerRow } from '@/components/bounties/BountyBoardSidebar';
+import { DEFAULT_FILTERS } from '@/components/bounties/board-filters';
+import type { SortKey, SourceFilter, StatusFilter } from '@/components/bounties/board-filters';
 import type { Discussion } from '@hiveio/dhive';
 import type { UnifiedBounty } from '@/types/unified-bounty';
 
 type ModalStep = 'choice' | 'hive-form' | 'eth-form';
 
-const SOURCE_FILTERS: { key: SourceFilter; label: string }[] = [
-  { key: 'all', label: 'ALL' },
-  { key: 'hive', label: 'HIVE' },
-  { key: 'poidh', label: 'POIDH' },
-];
+const CLOSED_PAGE_SIZE = 12;
+
+const alpha = (token: string, pct: number) =>
+  `color-mix(in srgb, var(--chakra-colors-${token}) ${pct}%, transparent)`;
 
 export default function BountiesHubClient() {
   const isMobile = useIsMobile();
   const { handle } = useEffectiveHiveUser();
+  const t = useTranslations('bounties');
+  const { hivePrice, hbdPrice, ethPrice } = useMarketPrices();
 
   const [newBounty, setNewBounty] = useState<Partial<Discussion> | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalStep, setModalStep] = useState<ModalStep>('choice');
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
-  const [allBounties, setAllBounties] = useState<UnifiedBounty[]>([]);
 
-  // Compute top winners leaderboard
-  const topWinners = useMemo(() => {
-    const winMap = new Map<string, { display: string; avatar: string | null; source: 'hive' | 'poidh'; wins: number }>();
-    for (const b of allBounties) {
+  const [queryInput, setQueryInput] = useState(DEFAULT_FILTERS.query);
+  const [query, setQuery] = useState(DEFAULT_FILTERS.query);
+  const [source, setSource] = useState<SourceFilter>(DEFAULT_FILTERS.source);
+  const [status, setStatus] = useState<StatusFilter>(DEFAULT_FILTERS.status);
+  const [sort, setSort] = useState<SortKey>(DEFAULT_FILTERS.sort);
+  const [closedVisible, setClosedVisible] = useState(CLOSED_PAGE_SIZE);
+
+  const listRef = useRef<HTMLDivElement | null>(null);
+
+  const { bounties, isLoading, isFetchingMore, hasMore, loadMore } = useUnifiedBounties({
+    newBounty,
+    refreshTrigger,
+  });
+
+  // Typing shouldn't re-filter the whole board on every keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(queryInput.trim().toLowerCase()), 180);
+    return () => clearTimeout(timer);
+  }, [queryInput]);
+
+  useEffect(() => {
+    setClosedVisible(CLOSED_PAGE_SIZE);
+  }, [query, source, status, sort]);
+
+  const toUsd = useCallback(
+    (b: UnifiedBounty): number => {
+      switch (b.rewardCurrency) {
+        case 'ETH':
+          return b.rewardAmount * (ethPrice ?? 2500);
+        case 'HBD':
+          return b.rewardAmount * (hbdPrice ?? 1);
+        case 'HIVE':
+          return b.rewardAmount * (hivePrice ?? 0.21);
+        default:
+          return b.rewardAmount;
+      }
+    },
+    [hivePrice, hbdPrice, ethPrice],
+  );
+
+  // ── Board-wide stats (never narrowed by the filters) ──────
+  const stats = useMemo(() => {
+    let openCount = 0;
+    let openPoolUsd = 0;
+    let paidOutUsd = 0;
+    const skaters = new Set<string>();
+
+    for (const b of bounties) {
+      const usd = toUsd(b);
+      if (b.isActive) {
+        openCount += 1;
+        openPoolUsd += usd;
+      } else {
+        paidOutUsd += usd;
+      }
+      if (b.authorDisplay && b.authorDisplay !== '???') skaters.add(b.authorDisplay.toLowerCase());
+      if (b.winnerDisplay) skaters.add(b.winnerDisplay.toLowerCase());
+    }
+
+    return { openCount, openPoolUsd, paidOutUsd, skaterCount: skaters.size };
+  }, [bounties, toUsd]);
+
+  const pool: PoolSlice[] = useMemo(() => {
+    const byCurrency = new Map<string, { amount: number; usd: number }>();
+    for (const b of bounties) {
+      if (!b.isActive) continue;
+      const entry = byCurrency.get(b.rewardCurrency) ?? { amount: 0, usd: 0 };
+      entry.amount += b.rewardAmount;
+      entry.usd += toUsd(b);
+      byCurrency.set(b.rewardCurrency, entry);
+    }
+    return Array.from(byCurrency.entries())
+      .map(([currency, v]) => ({ currency, ...v }))
+      .sort((a, b) => b.usd - a.usd);
+  }, [bounties, toUsd]);
+
+  const winners: WinnerRow[] = useMemo(() => {
+    const winMap = new Map<string, WinnerRow>();
+    for (const b of bounties) {
       if (!b.winnerDisplay) continue;
       const key = b.winnerDisplay.toLowerCase();
       const existing = winMap.get(key);
       if (existing) {
         existing.wins += 1;
       } else {
-        winMap.set(key, {
-          display: b.winnerDisplay,
-          avatar: b.winnerAvatar,
-          source: b.source,
-          wins: 1,
-        });
+        winMap.set(key, { display: b.winnerDisplay, avatar: b.winnerAvatar, wins: 1 });
       }
     }
     return Array.from(winMap.values())
       .sort((a, b) => b.wins - a.wins)
       .slice(0, 10);
-  }, [allBounties]);
+  }, [bounties]);
 
-  const handleOpenModal = () => {
+  // ── Filtering ─────────────────────────────────────────────
+  const searched = useMemo(() => {
+    if (!query) return bounties;
+    return bounties.filter((b) =>
+      `${b.title} ${b.description} ${b.authorDisplay} ${b.winnerDisplay ?? ''}`
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [bounties, query]);
+
+  // Each chip group counts against the *other* filters, so the numbers tell you
+  // what you'd actually get by clicking.
+  const sourceCounts = useMemo(() => {
+    const scoped = searched.filter(
+      (b) => status === 'all' || (status === 'open' ? b.isActive : !b.isActive),
+    );
+    return {
+      all: scoped.length,
+      hive: scoped.filter((b) => b.source === 'hive').length,
+      poidh: scoped.filter((b) => b.source === 'poidh').length,
+    };
+  }, [searched, status]);
+
+  const statusCounts = useMemo(() => {
+    const scoped = searched.filter((b) => source === 'all' || b.source === source);
+    return {
+      all: scoped.length,
+      open: scoped.filter((b) => b.isActive).length,
+      closed: scoped.filter((b) => !b.isActive).length,
+    };
+  }, [searched, source]);
+
+  const filtered = useMemo(
+    () => searched.filter((b) => source === 'all' || b.source === source),
+    [searched, source],
+  );
+
+  const sorter = useCallback(
+    (a: UnifiedBounty, b: UnifiedBounty) => {
+      switch (sort) {
+        case 'newest':
+          return b.createdAt - a.createdAt;
+        case 'ending': {
+          // Bounties with a real deadline come first, soonest at the top.
+          if (a.deadline && b.deadline) return a.deadline - b.deadline;
+          if (a.deadline) return -1;
+          if (b.deadline) return 1;
+          return b.createdAt - a.createdAt;
+        }
+        default:
+          return toUsd(b) - toUsd(a);
+      }
+    },
+    [sort, toUsd],
+  );
+
+  const openBounties = useMemo(
+    () => (status === 'closed' ? [] : filtered.filter((b) => b.isActive).sort(sorter)),
+    [filtered, status, sorter],
+  );
+
+  const closedBounties = useMemo(
+    () => (status === 'open' ? [] : filtered.filter((b) => !b.isActive).sort(sorter)),
+    [filtered, status, sorter],
+  );
+
+  const visibleClosed = useMemo(
+    () => closedBounties.slice(0, closedVisible),
+    [closedBounties, closedVisible],
+  );
+
+  const shownCount = openBounties.length + visibleClosed.length;
+
+  const handleLoadMore = useCallback(() => {
+    if (closedVisible < closedBounties.length) {
+      setClosedVisible((prev) => prev + CLOSED_PAGE_SIZE);
+    }
+    if (hasMore) loadMore();
+  }, [closedVisible, closedBounties.length, hasMore, loadMore]);
+
+  const listHasMore = closedVisible < closedBounties.length || hasMore;
+
+  const clearFilters = useCallback(() => {
+    setQueryInput('');
+    setQuery('');
+    setSource('all');
+    setStatus('all');
+  }, []);
+
+  const focusStatus = useCallback((next: StatusFilter) => {
+    setStatus(next);
+    listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  const handleOpenModal = useCallback(() => {
     setModalStep('choice');
     setIsModalOpen(true);
-  };
+  }, []);
 
-  const handleCloseModal = () => {
+  const handleCloseModal = useCallback(() => {
     setIsModalOpen(false);
     setModalStep('choice');
-  };
-
-  const handleChooseHive = () => {
-    setModalStep('hive-form');
-  };
-
-  const handleChooseEth = () => {
-    setModalStep('eth-form');
-  };
+  }, []);
 
   return (
     <Container maxW="container.xl" px={{ base: 3, md: 4 }} py={{ base: 4, md: 6 }}>
-      {/* ── Header bar ──────────────────────────── */}
-      <Box
-        border="1px solid"
-        borderColor="primary"
-        bg="muted"
-        px={{ base: 3, md: 6 }}
-        py={{ base: 2, md: 3 }}
-        mb={{ base: 4, md: 6 }}
-      >
-        <HStack justify="space-between" align="center">
-          <Text
-            fontWeight="900"
-            fontFamily="mono"
-            color="primary"
-            textTransform="uppercase"
-            letterSpacing="wider"
-            fontSize={{ base: 'md', md: '2xl' }}
-            noOfLines={1}
-          >
-            SKATEHIVE BOUNTIES
-          </Text>
+      <BountyBoardHeader
+        stats={stats}
+        isLoading={isLoading}
+        handle={handle}
+        onFocusOpen={() => focusStatus('open')}
+        onFocusClosed={() => focusStatus('closed')}
+      />
 
-          <HStack spacing={3} align="center">
-            {handle && (
-              <Text
-                fontSize="xs"
-                fontFamily="mono"
-                color="dim"
-                display={{ base: 'none', md: 'block' }}
-              >
-                WELCOME, <Text as="span" color="primary" fontWeight="bold">{handle.toUpperCase()}</Text>
-              </Text>
-            )}
-            <HStack spacing={0.5} display={{ base: 'none', sm: 'flex' }}>
-              {Array.from({ length: 8 }).map((_, i) => (
-                <Box key={i} w="4px" h="4px" bg={i < 5 ? 'primary' : 'dim'} />
-              ))}
-            </HStack>
-          </HStack>
-        </HStack>
-      </Box>
+      <Flex gap={6} direction={{ base: 'column', lg: 'row' }} align="flex-start">
+        <Box flex={1} minW={0} ref={listRef}>
+          <BountyBoardToolbar
+            query={queryInput}
+            onQueryChange={setQueryInput}
+            source={source}
+            onSourceChange={setSource}
+            sourceCounts={sourceCounts}
+            status={status}
+            onStatusChange={setStatus}
+            statusCounts={statusCounts}
+            sort={sort}
+            onSortChange={setSort}
+            onCreate={handleOpenModal}
+          />
 
-      {/* ── Two-column layout ────────────────────── */}
-      <Flex
-        gap={6}
-        direction={{ base: 'column', lg: 'row' }}
-        align="flex-start"
-      >
-        {/* ── Main content ───────────────────────── */}
-        <Box flex={1} minW={0}>
-          {/* Source filter tabs + create button */}
-          <Flex
-            justify="space-between"
-            align={{ base: 'stretch', sm: 'center' }}
-            mb={{ base: 5, md: 5 }}
-            gap={{ base: 4, sm: 3 }}
-            direction={{ base: 'column', sm: 'row' }}
-          >
-            <HStack
-              border="1px solid"
-              borderColor="border"
-              bg="muted"
-              spacing={0}
-            >
-              {SOURCE_FILTERS.map((f) => (
-                <Box
-                  key={f.key}
-                  as="button"
-                  px={{ base: 3, md: 4 }}
-                  py={2}
-                  fontSize="xs"
-                  fontWeight="bold"
-                  fontFamily="mono"
-                  textTransform="uppercase"
-                  letterSpacing="wider"
-                  color={sourceFilter === f.key ? 'background' : 'dim'}
-                  bg={sourceFilter === f.key ? 'primary' : 'transparent'}
-                  _hover={{ color: sourceFilter === f.key ? 'background' : 'text' }}
-                  transition="all 0.15s"
-                  onClick={() => setSourceFilter(f.key)}
-                  borderRight="1px solid"
-                  borderColor="border"
-                  _last={{ borderRight: 'none' }}
-                  flex={{ base: 1, sm: 'initial' }}
-                  textAlign="center"
-                >
-                  {f.label}
-                </Box>
-              ))}
-            </HStack>
+          {!isLoading && shownCount > 0 && (
+            <Text fontSize="2xs" fontFamily="mono" color="dim" mb={4} letterSpacing="wider">
+              {tVars(t('hubResults'), { count: shownCount, total: bounties.length })}
+            </Text>
+          )}
 
-            <Button
-              size="sm"
-              onClick={handleOpenModal}
-              fontWeight="bold"
-              fontFamily="mono"
-              px={4}
-              bg="primary"
-              color="background"
-              borderRadius="none"
-              textTransform="uppercase"
-              fontSize="xs"
-              letterSpacing="wider"
-              _hover={{ bg: 'accent', color: 'background' }}
-              w={{ base: '100%', sm: 'auto' }}
-            >
-              + CREATE BOUNTY
-            </Button>
-          </Flex>
-
-          {/* Bounty grid */}
           <UnifiedBountyList
-            newBounty={newBounty as any}
-            refreshTrigger={refreshTrigger}
-            sourceFilter={sourceFilter}
-            onBountiesLoaded={setAllBounties}
+            openBounties={openBounties}
+            closedBounties={visibleClosed}
+            totalOpen={openBounties.length}
+            totalClosed={closedBounties.length}
+            isLoading={isLoading}
+            isFetchingMore={isFetchingMore}
+            hasMore={listHasMore}
+            onLoadMore={handleLoadMore}
+            prices={{ hivePrice, hbdPrice, ethPrice }}
+            boardHasBounties={bounties.length > 0}
+            onClearFilters={clearFilters}
+            onCreate={handleOpenModal}
           />
         </Box>
 
-        {/* ── Sidebar ────────────────────────────── */}
-        <Box
-          w={{ base: '100%', lg: '300px' }}
-          flexShrink={0}
-        >
-          <VStack spacing={5} align="stretch">
-            {/* About bounties */}
-            <Box border="1px solid" borderColor="border" bg="muted">
-              <Box borderBottom="1px solid" borderColor="primary" px={4} py={2}>
-                <Text
-                  fontSize="sm"
-                  fontWeight="bold"
-                  fontFamily="mono"
-                  color="text"
-                  textTransform="uppercase"
-                  letterSpacing="wider"
-                >
-                  ABOUT BOUNTIES
-                </Text>
-              </Box>
-              <VStack align="stretch" spacing={3} px={4} py={4}>
-                <Text fontSize="xs" color="dim" fontFamily="mono" lineHeight="tall">
-                  Complete challenges, upload proof, and earn rewards. Each bounty has a
-                  specific task — follow instructions and submit your video to get paid
-                  in ETH or HIVE.
-                </Text>
-                <Box borderTop="1px dashed" borderColor="border" pt={3}>
-                  <VStack align="stretch" spacing={2}>
-                    <HStack spacing={2} align="center">
-                      <Icon as={FaPen} boxSize="11px" color="dim" />
-                      <Text fontSize="xs" fontFamily="mono" color="text" fontWeight="bold">
-                        1. PICK A BOUNTY
-                      </Text>
-                    </HStack>
-                    <HStack spacing={2} align="center">
-                      <Icon as={FaCheckCircle} boxSize="11px" color="dim" />
-                      <Text fontSize="xs" fontFamily="mono" color="text" fontWeight="bold">
-                        2. COMPLETE THE TASK
-                      </Text>
-                    </HStack>
-                    <HStack spacing={2} align="center">
-                      <Icon as={FaFolder} boxSize="11px" color="dim" />
-                      <Text fontSize="xs" fontFamily="mono" color="text" fontWeight="bold">
-                        3. UPLOAD YOUR PROOF
-                      </Text>
-                    </HStack>
-                  </VStack>
-                </Box>
-              </VStack>
-            </Box>
-
-            {/* Networks */}
-            <Box border="1px solid" borderColor="border" bg="muted">
-              <Box borderBottom="1px solid" borderColor="primary" px={4} py={2}>
-                <Text
-                  fontSize="sm"
-                  fontWeight="bold"
-                  fontFamily="mono"
-                  color="text"
-                  textTransform="uppercase"
-                  letterSpacing="wider"
-                >
-                  NETWORKS
-                </Text>
-              </Box>
-              <VStack align="stretch" spacing={0} px={4} py={3}>
-                <HStack spacing={2} py={1.5} borderBottom="1px solid" borderColor="border">
-                  <Icon as={FaHive} boxSize="14px" color="#E31337" />
-                  <Text fontSize="xs" fontFamily="mono" color="text" fontWeight="bold">HIVE</Text>
-                  <Text fontSize="2xs" fontFamily="mono" color="dim" ml="auto">BLOCKCHAIN</Text>
-                </HStack>
-                <HStack spacing={2} py={1.5} borderBottom="1px solid" borderColor="border">
-                  <Icon as={FaEthereum} boxSize="14px" color="#627EEA" />
-                  <Text fontSize="xs" fontFamily="mono" color="text" fontWeight="bold">BASE</Text>
-                  <Text fontSize="2xs" fontFamily="mono" color="dim" ml="auto">CHAIN 8453</Text>
-                </HStack>
-                <HStack spacing={2} py={1.5}>
-                  <Icon as={FaEthereum} boxSize="14px" color="#627EEA" />
-                  <Text fontSize="xs" fontFamily="mono" color="text" fontWeight="bold">ARBITRUM</Text>
-                  <Text fontSize="2xs" fontFamily="mono" color="dim" ml="auto">CHAIN 42161</Text>
-                </HStack>
-              </VStack>
-            </Box>
-
-            {/* Top Winners Leaderboard */}
-            {topWinners.length > 0 && (
-              <Box border="1px solid" borderColor="border" bg="muted">
-                <Box borderBottom="1px solid" borderColor="primary" px={4} py={2}>
-                  <HStack spacing={2} align="center">
-                    <Icon as={FaTrophy} boxSize="12px" color="warning" />
-                    <Text
-                      fontSize="sm"
-                      fontWeight="bold"
-                      fontFamily="mono"
-                      color="text"
-                      textTransform="uppercase"
-                      letterSpacing="wider"
-                    >
-                      TOP WINNERS
-                    </Text>
-                  </HStack>
-                </Box>
-                <VStack align="stretch" spacing={0} px={4} py={2}>
-                  {topWinners.map((winner, idx) => (
-                    <HStack
-                      key={winner.display}
-                      spacing={2}
-                      py={1.5}
-                      borderBottom={idx < topWinners.length - 1 ? '1px solid' : 'none'}
-                      borderColor="border"
-                    >
-                      <Text
-                        fontSize="2xs"
-                        fontFamily="mono"
-                        fontWeight="bold"
-                        color="dim"
-                        w="16px"
-                        textAlign="right"
-                      >
-                        {idx + 1}.
-                      </Text>
-                      {winner.avatar ? (
-                        <Avatar
-                          src={winner.avatar}
-                          name={winner.display}
-                          size="2xs"
-                          borderRadius="none"
-                          border="1px solid"
-                          borderColor="border"
-                        />
-                      ) : (
-                        <Box w="20px" h="20px" bg="border" border="1px solid" borderColor="border" />
-                      )}
-                      <Text
-                        fontSize="xs"
-                        fontFamily="mono"
-                        fontWeight="bold"
-                        color="text"
-                        noOfLines={1}
-                        flex={1}
-                      >
-                        {winner.display}
-                      </Text>
-                      <HStack spacing={1} align="center">
-                        <Icon as={FaTrophy} boxSize="9px" color="warning" />
-                        <Text fontSize="2xs" fontFamily="mono" fontWeight="bold" color="warning">
-                          {winner.wins}
-                        </Text>
-                      </HStack>
-                    </HStack>
-                  ))}
-                </VStack>
-              </Box>
-            )}
-          </VStack>
+        <Box w={{ base: '100%', lg: '300px' }} flexShrink={0}>
+          <BountyBoardSidebar
+            pool={pool}
+            poolTotalUsd={stats.openPoolUsd}
+            winners={winners}
+            onSourceSelect={setSource}
+          />
         </Box>
       </Flex>
 
@@ -366,19 +299,21 @@ export default function BountiesHubClient() {
       <SkateModal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
-        title={modalStep === 'choice' ? 'choose-your-chain' : modalStep === 'eth-form' ? 'create-eth-bounty' : 'create-bounty'}
-        size={modalStep === 'choice' ? 'lg' : (isMobile ? 'full' : '2xl')}
+        title={
+          modalStep === 'choice'
+            ? 'choose-your-chain'
+            : modalStep === 'eth-form'
+              ? 'create-eth-bounty'
+              : 'create-bounty'
+        }
+        size={modalStep === 'choice' ? 'lg' : isMobile ? 'full' : '2xl'}
       >
         {modalStep === 'eth-form' ? (
-          /* ── ETH/POIDH native bounty form ────── */
           <PoidhBountyComposer
-            onSuccess={() => {
-              setRefreshTrigger((prev) => prev + 1);
-            }}
+            onSuccess={() => setRefreshTrigger((prev) => prev + 1)}
             onClose={handleCloseModal}
           />
         ) : modalStep === 'choice' ? (
-          /* ── Chain choice: Matrix pill style ──── */
           <VStack spacing={{ base: 4, md: 6 }} py={{ base: 4, md: 6 }} px={{ base: 2, md: 4 }}>
             <Text
               fontSize="sm"
@@ -391,17 +326,10 @@ export default function BountiesHubClient() {
               CHOOSE YOUR BLOCKCHAIN
             </Text>
 
-            <Flex
-              gap={4}
-              w="100%"
-              justify="center"
-              align="center"
-              direction={{ base: 'column', sm: 'row' }}
-            >
-              {/* HIVE pill */}
+            <Flex gap={4} w="100%" justify="center" align="center" direction={{ base: 'column', sm: 'row' }}>
               <Box
                 as="button"
-                onClick={handleChooseHive}
+                onClick={() => setModalStep('hive-form')}
                 flex={{ base: 'initial', sm: 1 }}
                 w={{ base: '100%', sm: 'auto' }}
                 maxW={{ sm: '220px' }}
@@ -419,13 +347,7 @@ export default function BountiesHubClient() {
               >
                 <VStack spacing={3}>
                   <Icon as={FaHive} boxSize={{ base: '32px', md: '40px' }} color="#E31337" />
-                  <Text
-                    fontSize={{ base: 'md', md: 'lg' }}
-                    fontWeight="900"
-                    fontFamily="mono"
-                    color="#E31337"
-                    textTransform="uppercase"
-                  >
+                  <Text fontSize={{ base: 'md', md: 'lg' }} fontWeight="900" fontFamily="mono" color="#E31337" textTransform="uppercase">
                     HIVE
                   </Text>
                   <Text fontSize="2xs" fontFamily="mono" color="dim" textAlign="center">
@@ -434,31 +356,17 @@ export default function BountiesHubClient() {
                 </VStack>
               </Box>
 
-              {/* Divider */}
-              <Flex
-                align="center"
-                gap={2}
-                direction={{ base: 'row', sm: 'column' }}
-              >
-                <Box
-                  w={{ base: '20px', sm: '1px' }}
-                  h={{ base: '1px', sm: '20px' }}
-                  bg="border"
-                />
+              <Flex align="center" gap={2} direction={{ base: 'row', sm: 'column' }}>
+                <Box w={{ base: '20px', sm: '1px' }} h={{ base: '1px', sm: '20px' }} bg="border" />
                 <Text fontSize="xs" fontFamily="mono" color="dim" fontWeight="bold">
                   OR
                 </Text>
-                <Box
-                  w={{ base: '20px', sm: '1px' }}
-                  h={{ base: '1px', sm: '20px' }}
-                  bg="border"
-                />
+                <Box w={{ base: '20px', sm: '1px' }} h={{ base: '1px', sm: '20px' }} bg="border" />
               </Flex>
 
-              {/* ETH pill */}
               <Box
                 as="button"
-                onClick={handleChooseEth}
+                onClick={() => setModalStep('eth-form')}
                 flex={{ base: 'initial', sm: 1 }}
                 w={{ base: '100%', sm: 'auto' }}
                 maxW={{ sm: '220px' }}
@@ -476,13 +384,7 @@ export default function BountiesHubClient() {
               >
                 <VStack spacing={3}>
                   <Icon as={FaEthereum} boxSize={{ base: '32px', md: '40px' }} color="#627EEA" />
-                  <Text
-                    fontSize={{ base: 'md', md: 'lg' }}
-                    fontWeight="900"
-                    fontFamily="mono"
-                    color="#627EEA"
-                    textTransform="uppercase"
-                  >
+                  <Text fontSize={{ base: 'md', md: 'lg' }} fontWeight="900" fontFamily="mono" color="#627EEA" textTransform="uppercase">
                     ETH
                   </Text>
                   <Text fontSize="2xs" fontFamily="mono" color="dim" textAlign="center">
@@ -493,12 +395,11 @@ export default function BountiesHubClient() {
             </Flex>
 
             <Text fontSize="2xs" fontFamily="mono" color="dim" textAlign="center" maxW="400px">
-              HIVE BOUNTIES ARE MANAGED ON-CHAIN VIA SKATEHIVE. ETH BOUNTIES ARE
-              CREATED ON POIDH (BASE + ARBITRUM).
+              HIVE BOUNTIES ARE MANAGED ON-CHAIN VIA SKATEHIVE. ETH BOUNTIES ARE CREATED ON POIDH
+              (BASE + ARBITRUM).
             </Text>
           </VStack>
         ) : (
-          /* ── Hive bounty form ────────────────── */
           <BountyComposer
             onNewBounty={(bounty) => {
               setNewBounty(bounty);
@@ -510,19 +411,7 @@ export default function BountiesHubClient() {
         )}
       </SkateModal>
 
-      {/* ── Bottom decoration ────────────────────── */}
-      <HStack justify="space-between" mt={{ base: 4, md: 8 }} px={2} display={{ base: 'none', sm: 'flex' }}>
-        <HStack spacing={0.5}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Box key={i} w="6px" h="6px" bg="primary" />
-          ))}
-        </HStack>
-        <HStack spacing={0.5}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Box key={i} w="6px" h="6px" bg="primary" />
-          ))}
-        </HStack>
-      </HStack>
+      <Box mt={{ base: 6, md: 10 }} mx={2} h="1px" bg={alpha('primary', 25)} />
     </Container>
   );
 }
