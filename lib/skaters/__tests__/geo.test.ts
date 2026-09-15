@@ -9,6 +9,13 @@
 
 import assert from "node:assert";
 import { countryFromSlug, countrySlug, normalizeKey, resolveLocation } from "../geo";
+import {
+  AMBIGUOUS_ISO_CODES,
+  COUNTRY_ALIASES,
+  COUNTRY_CENTROIDS,
+  ISO_ALIASES,
+} from "../geoData";
+import { ISO_TO_NAME } from "@/lib/utils/countryData";
 
 const tests: Array<() => void> = [];
 let hasFailures = false;
@@ -202,6 +209,81 @@ it("round-trips a country through its slug", () => {
 it("returns null for a slug that is not a country", () => {
   assert.strictEqual(countryFromSlug("mordor"), null);
   assert.strictEqual(countryFromSlug(""), null);
+});
+
+it("reads a bare code from the profile editor as the country, not a US state", () => {
+  // The country <Select> in EditProfile stores the ISO code alone, and 26 of its
+  // options collide with a USPS state code. Before this, every one of them was
+  // filed under the wrong flag on the wrong continent.
+  const cases: [string, string][] = [
+    ["CA", "Canada"],
+    ["DE", "Germany"],
+    ["IN", "India"],
+    ["CO", "Colombia"],
+    ["AR", "Argentina"],
+    ["MA", "Morocco"],
+    ["PA", "Panama"],
+    ["ID", "Indonesia"],
+    ["IL", "Israel"],
+    ["LA", "Laos"],
+    ["ME", "Montenegro"],
+    ["MT", "Malta"],
+    ["NE", "Niger"],
+    ["SC", "Seychelles"],
+    ["TN", "Tunisia"],
+    ["VA", "Vatican City"],
+  ];
+  for (const [input, country] of cases) {
+    const place = resolveLocation(input);
+    assert.strictEqual(place.country, country, input);
+    assert.ok(place.coords, input);
+  }
+});
+
+it("keeps reading a bare US-only state code as the state", () => {
+  // These are not ISO countries, so nothing above should have claimed them.
+  for (const [input, state] of [["FL", "Florida"], ["TX", "Texas"], ["NY", "New York"]]) {
+    const place = resolveLocation(input);
+    assert.strictEqual(place.country, "United States", input);
+    assert.strictEqual(place.city, state, input);
+  }
+});
+
+it("resolves every country the profile editor can store", () => {
+  // Regression: ISO_ALIASES was a hand-written subset, so 157 of the editor's
+  // 249 options resolved to no country at all.
+  for (const [code, name] of Object.entries(ISO_TO_NAME)) {
+    const place = resolveLocation(code);
+    assert.strictEqual(place.country, name, code);
+    assert.ok(place.coords, `${code} has no centroid`);
+    // The country pills link straight at this URL, so it has to resolve back.
+    assert.strictEqual(countryFromSlug(countrySlug(name)), name, name);
+  }
+});
+
+it("every country name we can resolve has a centroid to pin", () => {
+  for (const name of Object.values(ISO_TO_NAME)) {
+    assert.ok(COUNTRY_CENTROIDS[name], name);
+  }
+});
+
+it("trusts a word-like code alone but not inside a phrase", () => {
+  // "is" is Iceland and "la" is Laos, but "skate life is" is neither. A code
+  // that is also a US state ("la", "pa") still reads as the state at the end of
+  // a phrase, which is what makes "phoenix az" work — the rule being tested is
+  // only that the phrase never comes back as the ISO country.
+  for (const code of AMBIGUOUS_ISO_CODES) {
+    const country = ISO_ALIASES[code];
+    assert.strictEqual(resolveLocation(code).country, country, `bare ${code}`);
+    // "us" is also in COUNTRY_ALIASES, where a trailing match is deliberate
+    // ("skating in the us"), so the ISO guard is not what decides it.
+    if (COUNTRY_ALIASES[code]) continue;
+    assert.notStrictEqual(
+      resolveLocation(`skate life ${code}`).country,
+      country,
+      `phrase ${code}`
+    );
+  }
 });
 
 (async () => {

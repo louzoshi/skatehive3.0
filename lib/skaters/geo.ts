@@ -11,6 +11,7 @@
  */
 
 import {
+  AMBIGUOUS_ISO_CODES,
   CITIES,
   COUNTRY_ALIASES,
   COUNTRY_CENTROIDS,
@@ -129,8 +130,9 @@ function findCity(segments: string[]): CityHit | null {
  * A country the person actually spelled out: "brazil", "south africa", "usa".
  *
  * Bare two-letter codes are NOT considered here. They are the ambiguous case —
- * "ca" is both California and Canada — so they get their own pass that runs
- * after US states, in {@link findIsoCountry}.
+ * "ca" is both California and Canada — so they get their own passes in
+ * {@link findIsoCountry}: one before US states when the code is the entire
+ * location, one after them when it is a word inside a longer string.
  */
 function findExplicitCountry(segments: string[]): string | null {
   for (const segment of segments) {
@@ -155,15 +157,27 @@ function findExplicitCountry(segments: string[]): string | null {
   return null;
 }
 
-/** Bare two-letter country codes: "ioannina gr", "sp br". */
-function findIsoCountry(segments: string[]): string | null {
+/**
+ * Bare two-letter country codes: "ioannina gr", "sp br".
+ *
+ * `allowAmbiguous` is set only when the code is the entire location, where it
+ * cannot be a stray word picked out of a sentence. See AMBIGUOUS_ISO_CODES.
+ */
+function findIsoCountry(segments: string[], allowAmbiguous: boolean): string | null {
+  const read = (code: string): string | null => {
+    if (code.length !== 2) return null;
+    if (!allowAmbiguous && AMBIGUOUS_ISO_CODES.has(code)) return null;
+    return ISO_ALIASES[code] ?? null;
+  };
+
   for (const segment of segments) {
-    if (segment.length === 2 && ISO_ALIASES[segment]) return ISO_ALIASES[segment];
+    const hit = read(segment);
+    if (hit) return hit;
   }
   for (const segment of segments) {
     const words = segment.split(" ");
-    const last = words[words.length - 1];
-    if (last && last.length === 2 && ISO_ALIASES[last]) return ISO_ALIASES[last];
+    const hit = read(words[words.length - 1] ?? "");
+    if (hit) return hit;
   }
   return null;
 }
@@ -190,8 +204,10 @@ function isNowhere(normalized: string, segments: string[]): boolean {
 
 /**
  * Turns a raw Hive `profile.location` into a structured place.
- * Resolution order is most-specific-first: city, then country, then US state,
- * then the "somewhere out there" bucket.
+ *
+ * Resolution order: a location that is only an ISO code (what the profile editor
+ * writes), then most-specific-first — city, country, US state — and finally the
+ * "somewhere out there" bucket.
  */
 export function resolveLocation(raw: string | undefined | null): ResolvedLocation {
   const trimmed = (raw || "").trim();
@@ -202,6 +218,30 @@ export function resolveLocation(raw: string | undefined | null): ResolvedLocatio
   if (!normalized) return { ...EMPTY, raw: trimmed, label: trimmed };
 
   const segments = toSegments(cleaned);
+
+  // A location that is nothing but a two-letter code comes from our own profile
+  // editor, whose country <Select> stores the ISO code and nothing else. Read it
+  // as that country before the US-state pass below can claim it: 26 of the
+  // editor's 249 options are also USPS state codes, so picking Canada filed the
+  // skater under California, Germany under Delaware and India under Indiana.
+  //
+  // The reverse case ("Nashville, TN") is why states otherwise run first, and it
+  // still does: it has a city in front of the code, so it is not bare. The 25
+  // state codes that are not ISO countries ("FL", "TX", "NY") fall through to
+  // the state pass either way.
+  if (segments.length === 1 && segments[0].length === 2) {
+    const bare = findIsoCountry(segments, true);
+    if (bare) {
+      return {
+        raw: trimmed,
+        country: bare,
+        city: null,
+        coords: COUNTRY_CENTROIDS[bare] ?? null,
+        label: bare,
+        nowhere: false,
+      };
+    }
+  }
 
   // Everything is gathered before anything is chosen, because the pieces
   // disambiguate each other: a US state tells us "CA" is California and not
@@ -251,7 +291,7 @@ export function resolveLocation(raw: string | undefined | null): ResolvedLocatio
 
   // Bare ISO codes come last: by here no state and no spelled-out country
   // claimed the string, so "gr" really is Greece.
-  const isoCountry = findIsoCountry(segments);
+  const isoCountry = findIsoCountry(segments, false);
   if (isoCountry) {
     return {
       raw: trimmed,
